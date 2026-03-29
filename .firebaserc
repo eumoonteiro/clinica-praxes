@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "praxispsicanaliticaoficial"
+  },
+  "targets": {
+    "praxispsicanaliticaoficial": {
+      "hosting": {
+        "clinica": [
+          "praxis-clinica"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
