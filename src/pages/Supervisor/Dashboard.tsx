@@ -19,7 +19,7 @@ const SupervisorDashboard = () => {
   const [patients, setPatients] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [prontuarios, setProntuarios] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
   const [analysts, setAnalysts] = useState<any[]>([]);
 

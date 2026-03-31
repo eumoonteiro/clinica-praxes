@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, auth, storage } from '../../lib/firebase';
-
+import { db, auth } from '../../lib/firebase';
 import { 
   collection, 
   addDoc, 
@@ -9,78 +8,54 @@ import {
   deleteDoc, 
   updateDoc 
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-
 import { 
-  UserPlus, 
-  ShieldCheck, 
   LogOut, 
   Users, 
   DollarSign, 
   Award,
   Trash2,
-  PieChart,
-  MessageCircle,
-  FileText,
-  FileUp,
-  History
+  TrendingUp,
+  UserCheck,
+  UserPlus,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Configurar o worker do PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.5.207/pdf.worker.min.js`;
+import { motion, AnimatePresence } from 'framer-motion';
 
 const CoordenacaoDashboard = () => {
   const [authorizedUsers, setAuthorizedUsers] = useState<any[]>([]);
   const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
-  const [patients, setPatients] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
-  const [prontuarios, setProntuarios] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [expandedAnalystId, setExpandedAnalystId] = useState<string | null>(null);
 
-  // Form states (Users)
+  // Form states
   const [newCpf, setNewCpf] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState('analista');
-
-  // Form states (Patients)
   const [newPatientName, setNewPatientName] = useState('');
   const [assignedAnalistaId, setAssignedAnalistaId] = useState('');
-  const [referralDate, setReferralDate] = useState(new Date().toISOString().split('T')[0]);
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
-  const [filterPatientId, setFilterPatientId] = useState('');
+
+  const currentYear = new Date().getFullYear().toString();
+  const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
 
   useEffect(() => {
-    // 1. Usuarios autorizados
     const unsubAuth = onSnapshot(collection(db, 'usuarios_autorizados'), (snapshot) => {
       setAuthorizedUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
-    // 2. Usuarios clinica
     const unsubReg = onSnapshot(collection(db, 'usuarios_clinica'), (snapshot) => {
       setRegisteredUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
-    // 3. Pagamentos
     const unsubPay = onSnapshot(collection(db, 'pagamentos'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPayments(data.sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds));
+      setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
-    // 4. Pacientes
     const unsubPatients = onSnapshot(collection(db, 'pacientes'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPatients(data.sort((a: any, b: any) => a.name.localeCompare(b.name)));
-    });
-
-    // 5. Prontuarios
-    const unsubProntuarios = onSnapshot(collection(db, 'prontuarios'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProntuarios(data.sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds));
+      setPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     return () => {
-      unsubAuth(); unsubReg(); unsubPay(); unsubPatients(); unsubProntuarios();
+      unsubAuth(); unsubReg(); unsubPay(); unsubPatients();
     };
   }, []);
 
@@ -94,38 +69,15 @@ const CoordenacaoDashboard = () => {
         name: newName,
         role: newRole,
         supervisor: '',
+        activeInClinic: true,
         createdAt: new Date()
       });
-      setNewCpf('');
-      setNewName('');
-      alert('Usuário autorizado com sucesso!');
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
+      setNewCpf(''); setNewName('');
+      alert('Usuário autorizado!');
+    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
-  const handleSetSupervisor = async (userId: string, supervisorName: string) => {
-    try {
-      const authUser = authorizedUsers.find(u => u.id === userId);
-      await updateDoc(doc(db, 'usuarios_autorizados', userId), { supervisor: supervisorName });
-      const registeredUser = registeredUsers.find(u => u.cpf === authUser.cpf);
-      if (registeredUser) {
-        await updateDoc(doc(db, 'usuarios_clinica', registeredUser.id), { supervisor: supervisorName });
-      }
-      alert('Supervisão atualizada!');
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleDeleteAuth = async (id: string) => {
-    if (!confirm('Remover autorização deste CPF?')) return;
-    await deleteDoc(doc(db, 'usuarios_autorizados', id));
-  };
-
-  const handleAddPatientCoord = async (e: React.FormEvent) => {
+  const handleAddPatient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPatientName || !assignedAnalistaId) return;
     setLoading(true);
@@ -135,224 +87,293 @@ const CoordenacaoDashboard = () => {
         analistaUid: assignedAnalistaId,
         status: 'Ativo',
         reasonStopped: '',
-        assignedAt: referralDate,
+        assignedAt: new Date().toISOString().split('T')[0],
         createdAt: new Date(),
-        files: [],
-        phone: ''
+        files: []
       });
-      setNewPatientName('');
-      setAssignedAnalistaId('');
-      alert('Paciente atribuído com sucesso!');
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
+      setNewPatientName(''); setAssignedAnalistaId('');
+      alert('Paciente atribuído!');
+    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
-  const handleFileUpload = async (patientId: string, file: File) => {
-    if (!file) return;
+  const updateMemberStatus = async (userId: string, status: boolean) => {
+    try {
+      await updateDoc(doc(db, 'usuarios_autorizados', userId), { activeInClinic: status });
+    } catch (err: any) { alert(err.message); }
+  };
+
+  const reassignPatient = async (patientId: string, newAnalistaUid: string) => {
+    if (!newAnalistaUid) return;
     setLoading(true);
     try {
-      const storageRef = ref(storage, `pacientes/${patientId}/${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const patient = patients.find(p => p.id === patientId);
-      const newFiles = [...(patient.files || []), { 
-        name: file.name, 
-        url, 
-        date: new Date().toISOString() 
-      }];
-      await updateDoc(doc(db, 'pacientes', patientId), { files: newFiles });
-      alert('Arquivo processado com sucesso!');
-    } catch (err: any) {
-      alert("Erro ao enviar arquivo: " + err.message);
-    } finally {
-      setLoading(false);
-    }
+      await updateDoc(doc(db, 'pacientes', patientId), { analistaUid: newAnalistaUid });
+      alert('Responsável atualizado!');
+    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
-  const filteredPayments = payments.filter(pay => {
-    const payDate = pay.paymentDate || (pay.createdAt?.toDate ? pay.createdAt.toDate().toISOString() : '');
-    const matchesYear = payDate.startsWith(filterYear);
-    const matchesPatient = filterPatientId === '' || pay.patientId === filterPatientId;
-    return matchesYear && matchesPatient;
-  });
+  const currentMonthPayments = payments.filter(p => (p.paymentDate || '').startsWith(`${currentYear}-${currentMonth}`));
+  const repasseRecebido = currentMonthPayments.filter(p => p.repasseConfirmado).reduce((acc, curr) => acc + curr.repasse, 0);
+  const repassePendente = currentMonthPayments.filter(p => !p.repasseConfirmado).reduce((acc, curr) => acc + curr.repasse, 0);
+  const totalPacientesAtivos = patients.filter(p => p.status === 'Ativo').length;
 
-  const totalRepasseGlobal = filteredPayments.reduce((acc, curr) => acc + curr.repasse, 0);
+  // Merging both lists for unified view - using document ID as key to prevent overwriting
+  const technicalStaff = (() => {
+    const list: any[] = [];
+    const processedCpfs = new Set();
+
+    // 1. All registered users first
+    registeredUsers.forEach(ru => {
+      if (ru.role === 'coordenacao') return;
+      const auMatch = authorizedUsers.find(au => au.cpf === ru.cpf);
+      list.push({
+        id: ru.id,
+        uid: ru.uid,
+        name: ru.name,
+        cpf: ru.cpf,
+        role: ru.role || auMatch?.role || 'analista',
+        activeInClinic: auMatch?.activeInClinic ?? true,
+        isRegistered: true,
+        activePatients: patients.filter(p => p.analistaUid === ru.uid && p.status === 'Ativo').length
+      });
+      if (ru.cpf) processedCpfs.add(ru.cpf);
+    });
+
+    // 2. Authorized users who haven't registered yet
+    authorizedUsers.forEach(au => {
+      if (au.role === 'coordenacao' || processedCpfs.has(au.cpf)) return;
+      list.push({
+        id: au.id,
+        name: au.name,
+        cpf: au.cpf,
+        role: au.role || 'analista',
+        activeInClinic: au.activeInClinic ?? true,
+        isRegistered: false,
+        activePatients: 0
+      });
+    });
+
+    return list.sort((a, b) => b.activePatients - a.activePatients);
+  })();
 
   return (
-    <div style={{ background: '#f0f2f5', minHeight: '100vh', padding: '40px 0', position: 'relative' }}>
+    <div style={{ background: '#f0f2f5', minHeight: '100vh', padding: '40px 0' }}>
       {loading && (
-         <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(255,255,255,0.7)',
-          backdropFilter: 'blur(5px)',
-          zIndex: 9999,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '15px'
-        }}>
-          <div className="spinner" style={{
-            width: '40px', height: '40px',
-            border: '4px solid #e2e8f0',
-            borderTopColor: 'var(--secondary)',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }} />
-          <p className="outfit" style={{ fontWeight: 600 }}>Iniciando...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="spinner" style={{ width: '40px', height: '40px', border: '4px solid #e2e8f0', borderTopColor: 'var(--secondary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         </div>
       )}
       <div className="container">
+        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
           <div>
-            <h1 className="outfit">Portal da Coordenação</h1>
-            <p style={{ color: 'var(--text-muted)' }}>Gestão Estratégica Práxis Clínica</p>
+            <h1 className="outfit">Gestão da Clínica</h1>
+            <p style={{ color: 'var(--text-muted)' }}>Coordenação Práxis • {currentMonth}/{currentYear}</p>
           </div>
           <button className="btn" style={{ background: '#fee2e2', color: '#ef4444' }} onClick={() => auth.signOut()}>
-            Sair <LogOut size={18} />
+            Sair <LogOut size={16} />
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ background: 'var(--accent-glow)', color: 'var(--secondary)', padding: '15px', borderRadius: '15px' }}><DollarSign size={24}/></div>
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px', borderLeft: '4px solid #16a34a' }}>
+            <div style={{ background: '#dcfce7', color: '#16a34a', padding: '12px', borderRadius: '12px' }}><DollarSign size={24}/></div>
             <div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Repasse Global {filterYear}</span>
-              <h3 className="outfit">R$ {totalRepasseGlobal.toFixed(2)}</h3>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Repasse Recebido (Mês)</span>
+              <h3 className="outfit" style={{ color: '#16a34a' }}>R$ {repasseRecebido.toFixed(2)}</h3>
             </div>
           </div>
-          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ background: '#dcfce7', color: '#16a34a', padding: '15px', borderRadius: '15px' }}><Users size={24}/></div>
+          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px', borderLeft: '4px solid #ef4444' }}>
+            <div style={{ background: '#fee2e2', color: '#ef4444', padding: '12px', borderRadius: '12px' }}><TrendingUp size={24}/></div>
             <div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Membros Ativos</span>
-              <h3 className="outfit">{registeredUsers.length}</h3>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Repasse Pendente (Mês)</span>
+              <h3 className="outfit" style={{ color: '#ef4444' }}>R$ {repassePendente.toFixed(2)}</h3>
+            </div>
+          </div>
+          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px', borderLeft: '4px solid var(--secondary)' }}>
+            <div style={{ background: 'var(--accent-glow)', color: 'var(--secondary)', padding: '12px', borderRadius: '12px' }}><Users size={24}/></div>
+            <div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Pacientes Ativos</span>
+              <h3 className="outfit">{totalPacientesAtivos}</h3>
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px' }} className="mobile-grid">
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '30px', marginBottom: '40px' }} className="mobile-grid">
+          {/* Members List */}
           <div>
-            <div className="card" style={{ marginBottom: '30px' }}>
-              <h4 className="outfit" style={{ marginBottom: '20px' }}>Atribuir Paciente</h4>
-              <form onSubmit={handleAddPatientCoord}>
+            <div className="card">
+              <h4 className="outfit" style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Award size={20} color="var(--secondary)"/> Membros da Equipe
+              </h4>
+              <div style={{ display: 'grid', gap: '15px' }}>
+                {technicalStaff.map(analyst => (
+                  <div key={analyst.id} className="glass" style={{ padding: '10px', borderRadius: '20px', overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div 
+                        style={{ flex: 1, cursor: 'pointer' }} 
+                        onClick={() => setExpandedAnalystId(expandedAnalystId === analyst.id ? null : analyst.id)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <h5 style={{ margin: 0 }}>{analyst.name}</h5>
+                          {expandedAnalystId === analyst.id ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                          {!analyst.isRegistered && (
+                            <span style={{ fontSize: '0.65rem', padding: '2px 6px', background: '#fef3c7', color: '#92400e', borderRadius: '4px' }}>
+                              Aguardando Registro
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: analyst.activeInClinic ? '#dcfce7' : '#f1f5f9', color: analyst.activeInClinic ? '#16a34a' : '#64748b' }}>
+                            {analyst.activeInClinic ? 'Ativo na Clínica' : 'Inativo'}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            {analyst.activePatients} pacientes ativos
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button className="btn" title="Toggle Status" style={{ padding: '6px', background: analyst.activeInClinic ? '#fee2e2' : '#dcfce7', color: analyst.activeInClinic ? '#ef4444' : '#16a34a' }} onClick={() => updateMemberStatus(analyst.id, !analyst.activeInClinic)}>
+                          <UserCheck size={14}/>
+                        </button>
+                        <button className="btn" title="Remover" style={{ padding: '6px', background: '#f1f5f9' }} onClick={() => {
+                          if(confirm('Remover autorização?')) deleteDoc(doc(db, 'usuarios_autorizados', analyst.id));
+                        }}>
+                          <Trash2 size={14} color="#ef4444"/>
+                        </button>
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {expandedAnalystId === analyst.id && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          style={{ borderTop: '1px solid #f1f5f9', background: '#fff', borderRadius: '0 0 20px 20px' }}
+                        >
+                          <div style={{ padding: '15px' }}>
+                            <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '10px', textTransform: 'uppercase' }}>Pacientes Atribuídos:</p>
+                            <div style={{ display: 'grid', gap: '8px' }}>
+                              {patients.filter(p => p.analistaUid === analyst.uid).map(patient => (
+                                <div key={patient.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', borderRadius: '10px' }}>
+                                  <div>
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{patient.name}</span>
+                                    <span style={{ marginLeft: '8px', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '100px', background: patient.status === 'Ativo' ? '#dcfce7' : '#fee2e2', color: patient.status === 'Ativo' ? '#16a34a' : '#ef4444' }}>{patient.status}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    <a href={`/paciente/${patient.id}`} className="btn" style={{ padding: '4px 8px', fontSize: '0.65rem', background: 'var(--secondary)', color: 'white' }}>
+                                      Ver Ficha
+                                    </a>
+                                  </div>
+                                </div>
+                              ))}
+                              {patients.filter(p => p.analistaUid === analyst.uid).length === 0 && (
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '10px' }}>Nenhum paciente vinculado.</p>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'grid', gap: '30px', alignContent: 'start' }}>
+            <div className="card">
+              <h4 className="outfit" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <UserPlus size={20}/> Atribuir Paciente
+              </h4>
+              <form onSubmit={handleAddPatient}>
                 <div className="form-group">
-                  <label>Nome do Paciente</label>
+                  <label style={{ fontSize: '0.8rem' }}>Nome do Paciente</label>
                   <input className="form-control" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} required />
                 </div>
                 <div className="form-group">
-                  <label>Analista Responsável</label>
+                  <label style={{ fontSize: '0.8rem' }}>Responsável Técnico</label>
                   <select className="form-control" value={assignedAnalistaId} onChange={e => setAssignedAnalistaId(e.target.value)} required>
                     <option value="">Selecione...</option>
-                    {registeredUsers.filter(u => u.role === 'analista').map(u => (
+                    {registeredUsers.filter(u => u.role !== 'coordenacao').map(u => (
                       <option key={u.uid} value={u.uid}>{u.name}</option>
                     ))}
                   </select>
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Atribuir</button>
+                <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%' }}>Finalizar Atribuição</button>
               </form>
             </div>
 
             <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '20px' }}>Autorizar CPF</h4>
+              <h4 className="outfit" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <TrendingUp size={20}/> Autorizar CPF
+              </h4>
               <form onSubmit={handleAuthorize}>
                 <div className="form-group">
-                  <label>Nome</label>
+                  <label style={{ fontSize: '0.8rem' }}>Nome Completo</label>
                   <input className="form-control" value={newName} onChange={e => setNewName(e.target.value)} required />
                 </div>
                 <div className="form-group">
-                  <label>CPF</label>
-                  <input className="form-control" value={newCpf} onChange={e => setNewCpf(e.target.value.replace(/\D/g, ''))} required />
+                  <label style={{ fontSize: '0.8rem' }}>CPF (Apenas números)</label>
+                  <input className="form-control" value={newCpf} onChange={e => setNewCpf(e.target.value)} required />
                 </div>
                 <div className="form-group">
-                  <label>Papel</label>
+                  <label style={{ fontSize: '0.8rem' }}>Papel</label>
                   <select className="form-control" value={newRole} onChange={e => setNewRole(e.target.value)}>
                     <option value="analista">Analista</option>
                     <option value="supervisor">Supervisor</option>
                     <option value="coordenacao">Coordenação</option>
                   </select>
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Autorizar</button>
+                <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%' }}>Gerar Autorização</button>
               </form>
             </div>
           </div>
+        </div>
 
-          <div style={{ display: 'grid', gap: '30px' }}>
-            <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '20px' }}><History size={20}/> Histórico Global de Evoluções</h4>
-              <div style={{ display: 'grid', gap: '15px', maxHeight: '500px', overflowY: 'auto' }}>
-                {prontuarios.map(pr => (
-                  <div key={pr.id} className="glass" style={{ padding: '15px', borderRadius: '15px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <h5 style={{ margin: 0 }}>{pr.patientName}</h5>
-                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#e0f2fe', borderRadius: '4px' }}>{pr.type}</span>
-                    </div>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Analista: {pr.analistaName} • {new Date(pr.date).toLocaleDateString('pt-BR')}</p>
-                    <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginTop: '10px' }}>
-                      {pr.content}
-                    </div>
-                  </div>
+        <div className="card" style={{ opacity: 0.8 }}>
+          <h4 className="outfit" style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem' }}>
+             Listagem Geral e Reatribuição
+          </h4>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
+                  <th style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Paciente</th>
+                  <th style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Responsável Atual</th>
+                  <th style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'right' }}>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {patients.map(p => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '12px', fontSize: '0.85rem' }}>{p.name}</td>
+                    <td style={{ padding: '12px' }}>
+                      <select 
+                        style={{ fontSize: '0.75rem', padding: '4px', borderRadius: '4px', border: '1px solid #e2e8f0', background: 'transparent' }}
+                        value={p.analistaUid}
+                        onChange={(e) => reassignPatient(p.id, e.target.value)}
+                      >
+                        {registeredUsers.filter(ru => ru.role !== 'coordenacao').map(ru => (
+                          <option key={ru.uid} value={ru.uid}>{ru.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'right' }}>
+                      <a href={`/paciente/${p.id}`} style={{ color: 'var(--secondary)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}>Ver Ficha →</a>
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '20px' }}><DollarSign size={20}/> Repasses Gerais</h4>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', fontSize: '0.9rem' }}>
-                  <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #eee' }}>
-                      <th style={{ padding: '10px' }}>Data</th>
-                      <th style={{ padding: '10px' }}>Paciente</th>
-                      <th style={{ padding: '10px' }}>Analista</th>
-                      <th style={{ padding: '10px' }}>Repasse</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPayments.map(pay => (
-                      <tr key={pay.id} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ padding: '10px' }}>{new Date(pay.paymentDate || pay.createdAt?.toDate()).toLocaleDateString('pt-BR')}</td>
-                        <td style={{ padding: '10px' }}>{pay.patientName}</td>
-                        <td style={{ padding: '10px' }}>{pay.analistaName}</td>
-                        <td style={{ padding: '10px', fontWeight: 700, color: pay.repasseConfirmado ? '#16a34a' : '#ef4444' }}>
-                          R$ {pay.repasse.toFixed(2)}
-                          <br/><span style={{ fontSize: '0.6rem' }}>{pay.repasseConfirmado ? 'Confirmado' : 'Pendente'}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '20px' }}><Award size={20}/> Gestão de Membros</h4>
-              <div style={{ display: 'grid', gap: '15px' }}>
-                {authorizedUsers.map(user => (
-                  <div key={user.id} className="glass" style={{ padding: '15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h5 style={{ margin: 0 }}>{user.name}</h5>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{user.role} • {user.cpf}</p>
-                      <input 
-                        className="form-control" 
-                        style={{ fontSize: '0.8rem', marginTop: '5px' }} 
-                        placeholder="Supervisor" 
-                        defaultValue={user.supervisor} 
-                        onBlur={(e) => handleSetSupervisor(user.id, e.target.value)}
-                      />
-                    </div>
-                    <button className="btn" onClick={() => handleDeleteAuth(user.id)} style={{ color: '#ef4444' }}><Trash2 size={16}/></button>
-                  </div>
-                ))}
-              </div>
-            </div>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import AnalistaDashboard from './pages/Analista/Dashboard';
+import PatientDetails from './pages/Analista/PatientDetails';
 import CoordenacaoDashboard from './pages/Coordenacao/Dashboard';
 import SupervisorDashboard from './pages/Supervisor/Dashboard';
 
@@ -32,6 +33,15 @@ function App() {
             element={
               <ProtectedRoute role="analista">
                 <AnalistaDashboard />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/paciente/:id" 
+            element={
+              <ProtectedRoute>
+                <PatientDetails />
               </ProtectedRoute>
             } 
           />
