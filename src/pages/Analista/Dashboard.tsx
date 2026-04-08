@@ -4,8 +4,6 @@ import { db, auth } from '../../lib/firebase';
 import { 
   collection, 
   addDoc, 
-  query, 
-  where, 
   onSnapshot, 
   doc, 
   updateDoc 
@@ -41,22 +39,24 @@ const AnalistaDashboard = () => {
   useEffect(() => {
     if (!userData) return;
 
-    const qPatients = query(
-      collection(db, 'pacientes'), 
-      where('analistaUid', '==', userData.uid)
-    );
-    const unsubPatients = onSnapshot(qPatients, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPatients(data.sort((a: any, b: any) => a.name.localeCompare(b.name)));
+    // Listen to ALL patients and filter locally for robustness with CPF/UID mix
+    const unsubPatients = onSnapshot(collection(db, 'pacientes'), (snapshot) => {
+      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const myPatients = allData.filter((p: any) => 
+        p.analistaUid === userData.uid || 
+        (p.analistaCpf && p.analistaCpf.replace(/\D/g, '') === userData.cpf?.replace(/\D/g, ''))
+      );
+      setPatients(myPatients.sort((a: any, b: any) => a.name.localeCompare(b.name)));
     });
 
-    const qPayments = query(
-      collection(db, 'pagamentos'), 
-      where('analistaUid', '==', userData.uid)
-    );
-    const unsubPayments = onSnapshot(qPayments, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPayments(data.sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds));
+    // Same for payments
+    const unsubPayments = onSnapshot(collection(db, 'pagamentos'), (snapshot) => {
+      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const myPayments = allData.filter((p: any) => 
+        p.analistaUid === userData.uid || 
+        (p.analistaCpf && p.analistaCpf.replace(/\D/g, '') === userData.cpf?.replace(/\D/g, ''))
+      );
+      setPayments(myPayments.sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds));
     });
 
     return () => {

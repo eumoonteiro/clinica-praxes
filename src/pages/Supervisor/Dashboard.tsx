@@ -68,12 +68,13 @@ const SupervisorDashboard = () => {
   const { myAnalysts, myPatients } = useMemo(() => {
     if (!userData) return { myAnalysts: [], myPatients: [] };
 
-    const supervisorName = userData.name;
+    const supervisorName = userData.name?.trim().toLowerCase();
     const list: any[] = [];
 
     // Source of truth for supervision: authorized users list
     allAuthorizedUsers.forEach((a: any) => {
-      if (a.supervisor === supervisorName) {
+      const authSupervisor = a.supervisor?.trim().toLowerCase();
+      if (authSupervisor === supervisorName) {
         const cleanAuthCpf = sanitizeCpf(a.cpf);
         // Look for matching registration
         const matchingReg = allRegisteredUsers.find(r => sanitizeCpf(r.cpf) === cleanAuthCpf);
