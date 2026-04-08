@@ -11,8 +11,11 @@ import {
   Users, 
   History,
   MessageCircle,
-  Activity
+  Activity,
+  Settings,
+  X
 } from 'lucide-react';
+import { updateDoc, doc } from 'firebase/firestore';
 
 const SupervisorDashboard = () => {
   const { userData } = useAuth();
@@ -22,6 +25,10 @@ const SupervisorDashboard = () => {
 
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
   const [analysts, setAnalysts] = useState<any[]>([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     // 1. Fetch Analysts to see who I supervise
@@ -58,6 +65,31 @@ const SupervisorDashboard = () => {
     };
   }, [userData]);
 
+  useEffect(() => {
+    if (userData) {
+      setEditName(userData.name || '');
+      setEditEmail(userData.email || '');
+    }
+  }, [userData, showProfileModal]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userData) return;
+    setLoadingProfile(true);
+    try {
+      await updateDoc(doc(db, 'usuarios_clinica', userData.uid), {
+        name: editName,
+        email: editEmail
+      });
+      alert('Perfil atualizado com sucesso! Recarregue para ver as mudanças.');
+      setShowProfileModal(false);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   return (
     <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '40px 0' }}>
       <div className="container">
@@ -67,9 +99,14 @@ const SupervisorDashboard = () => {
             <h1 className="outfit">Painel do Supervisor</h1>
             <p style={{ color: 'var(--text-muted)' }}>Supervisão Clínica • {userData?.name}</p>
           </div>
-          <button className="btn" style={{ background: '#fee2e2', color: '#ef4444' }} onClick={() => auth.signOut()}>
-            Sair <LogOut size={18} />
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button className="btn" style={{ background: '#f1f5f9', color: 'var(--primary)' }} onClick={() => setShowProfileModal(true)}>
+              Meu Perfil <Settings size={18} />
+            </button>
+            <button className="btn" style={{ background: '#fee2e2', color: '#ef4444' }} onClick={() => auth.signOut()}>
+              Sair <LogOut size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -189,6 +226,31 @@ const SupervisorDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <button onClick={() => setShowProfileModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={20} />
+            </button>
+            <h3 className="outfit" style={{ marginBottom: '25px' }}>Editar Perfil</h3>
+            <form onSubmit={handleUpdateProfile}>
+              <div className="form-group">
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px', display: 'block' }}>Nome Completo</label>
+                <input className="form-control" value={editName} onChange={e => setEditName(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px', display: 'block' }}>E-mail</label>
+                <input type="email" className="form-control" value={editEmail} onChange={e => setEditEmail(e.target.value)} required />
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }} disabled={loadingProfile}>
+                {loadingProfile ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
