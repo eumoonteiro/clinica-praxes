@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db, auth } from '../../lib/firebase';
 import { 
@@ -8,7 +8,7 @@ import {
   doc,
   addDoc
 } from 'firebase/firestore';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   LogOut, 
   Users, 
@@ -21,10 +21,12 @@ import {
 
 const SupervisorDashboard = () => {
   const { userData } = useAuth();
-  const [patients, setPatients] = useState<any[]>([]);
+  
+  const [allPatients, setAllPatients] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [prontuarios, setProntuarios] = useState<any[]>([]);
-  const [analysts, setAnalysts] = useState<any[]>([]);
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState<any[]>([]);
+  const [allAuthorizedUsers, setAllAuthorizedUsers] = useState<any[]>([]);
 
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -32,73 +34,73 @@ const SupervisorDashboard = () => {
   const [editEmail, setEditEmail] = useState('');
   const [loadingProfile, setLoadingProfile] = useState(false);
   
-  // Supervision Report form
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportContent, setReportContent] = useState('');
   const [selectedAnalyst, setSelectedAnalyst] = useState<any>(null);
   const [loadingReport, setLoadingReport] = useState(false);
 
+  // Helper to sanitize CPF for comparison
+  const sanitizeCpf = (cpf: string) => cpf?.replace(/\D/g, '') || '';
+
   useEffect(() => {
-    // 1. Fetch Analysts (both registered and authorized)
-    const unsubAuth = onSnapshot(collection(db, 'usuarios_autorizados'), (authSnap) => {
-      const auths = authSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      const unsubReg = onSnapshot(collection(db, 'usuarios_clinica'), (regSnap) => {
-        const regs = regSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Combine them
-        const list: any[] = [];
-        const processedCpfs = new Set();
-        
-        regs.forEach((r: any) => {
-          if (r.supervisor === userData?.name) {
-            list.push({ ...r, isRegistered: true });
-            processedCpfs.add(r.cpf);
-          }
-        });
-        
-        auths.forEach((a: any) => {
-          if (a.supervisor === userData?.name && !processedCpfs.has(a.cpf)) {
-            list.push({ ...a, isRegistered: false, uid: '' });
-          }
-        });
-        
-        setAnalysts(list);
-        
-        const myAnalystUids = list.filter(a => a.uid).map(a => a.uid);
-        const myAnalystCpfs = list.map(a => a.cpf);
-
-        // 2. Fetch Patients and filter
-        const unsubPatients = onSnapshot(collection(db, 'pacientes'), (pSnapshot) => {
-          const allPatients = pSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          const filteredPatients = userData?.role === 'supervisor' 
-            ? allPatients.filter((p: any) => 
-                (p.analistaUid && myAnalystUids.includes(p.analistaUid)) || 
-                (p.analistaCpf && myAnalystCpfs.includes(p.analistaCpf))
-              )
-            : allPatients;
-          setPatients(filteredPatients);
-        });
-
-        return () => unsubPatients();
-      });
-      return () => unsubReg();
+    const unsubAuth = onSnapshot(collection(db, 'usuarios_autorizados'), (snap) => {
+      setAllAuthorizedUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-
-    const unsubPayments = onSnapshot(collection(db, 'pagamentos'), (snapshot) => {
-      setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsubReg = onSnapshot(collection(db, 'usuarios_clinica'), (snap) => {
+      setAllRegisteredUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-
-    const unsubProntuarios = onSnapshot(collection(db, 'prontuarios'), (snapshot) => {
-      setProntuarios(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsubPatients = onSnapshot(collection(db, 'pacientes'), (snap) => {
+      setAllPatients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubPayments = onSnapshot(collection(db, 'pagamentos'), (snap) => {
+      setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubProntuarios = onSnapshot(collection(db, 'prontuarios'), (snap) => {
+      setProntuarios(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
     return () => {
-      unsubAuth();
-      unsubPayments();
-      unsubProntuarios();
+      unsubAuth(); unsubReg(); unsubPatients(); unsubPayments(); unsubProntuarios();
     };
-  }, [userData]);
+  }, []);
+
+  // Compute My Analysts and My Patients
+  const { myAnalysts, myPatients } = useMemo(() => {
+    if (!userData) return { myAnalysts: [], myPatients: [] };
+
+    const supervisorName = userData.name;
+    const list: any[] = [];
+    const processedCpfs = new Set();
+
+    // 1. Get supervised analysts from registered collection
+    allRegisteredUsers.forEach((r: any) => {
+      if (r.supervisor === supervisorName) {
+        list.push({ ...r, isRegistered: true });
+        processedCpfs.add(sanitizeCpf(r.cpf));
+      }
+    });
+
+    // 2. Add supervised analysts from authorized collection if not already in registered
+    allAuthorizedUsers.forEach((a: any) => {
+      const cleanCpf = sanitizeCpf(a.cpf);
+      if (a.supervisor === supervisorName && !processedCpfs.has(cleanCpf)) {
+        list.push({ ...a, isRegistered: false, uid: '' });
+        processedCpfs.add(cleanCpf);
+      }
+    });
+
+    const analystCpfs = list.map(a => sanitizeCpf(a.cpf));
+    const analystUids = list.filter(a => a.uid).map(a => a.uid);
+
+    // 3. Filter patients assigned to any of these analysts
+    const patients = allPatients.filter((p: any) => {
+      const cleanPatientAnalystCpf = sanitizeCpf(p.analistaCpf);
+      return (p.analistaUid && analystUids.includes(p.analistaUid)) || 
+             (cleanPatientAnalystCpf && analystCpfs.includes(cleanPatientAnalystCpf));
+    });
+
+    return { myAnalysts: list, myPatients: patients };
+  }, [userData, allRegisteredUsers, allAuthorizedUsers, allPatients]);
 
   useEffect(() => {
     if (userData) {
@@ -116,13 +118,9 @@ const SupervisorDashboard = () => {
         name: editName,
         email: editEmail
       });
-      alert('Perfil atualizado com sucesso! Recarregue para ver as mudanças.');
+      alert('Perfil atualizado com sucesso!');
       setShowProfileModal(false);
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoadingProfile(false);
-    }
+    } catch (err: any) { alert(err.message); } finally { setLoadingProfile(false); }
   };
 
   const handleCreateReport = async (e: React.FormEvent) => {
@@ -133,7 +131,8 @@ const SupervisorDashboard = () => {
       await addDoc(collection(db, 'relatos_supervisao'), {
         supervisorUid: userData.uid,
         supervisorName: userData.name,
-        analistaUid: selectedAnalyst.uid,
+        analistaUid: selectedAnalyst.uid || '',
+        analistaCpf: selectedAnalyst.cpf || '',
         analistaName: selectedAnalyst.name,
         content: reportContent,
         date: new Date().toISOString(),
@@ -142,14 +141,8 @@ const SupervisorDashboard = () => {
       alert('Relato de supervisão registrado com sucesso!');
       setShowReportModal(false);
       setReportContent('');
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoadingReport(false);
-    }
+    } catch (err: any) { alert(err.message); } finally { setLoadingReport(false); }
   };
-
-  const myAnalysts = analysts.filter((a: any) => a.supervisor === userData?.name);
 
   return (
     <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '40px 0' }}>
@@ -183,7 +176,7 @@ const SupervisorDashboard = () => {
             <div style={{ background: 'var(--accent-glow)', color: 'var(--secondary)', padding: '15px', borderRadius: '15px' }}><Users size={24}/></div>
             <div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Pacientes Sob Supervisão</span>
-              <h3 className="outfit">{patients.length}</h3>
+              <h3 className="outfit">{myPatients.length}</h3>
             </div>
           </div>
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -196,18 +189,25 @@ const SupervisorDashboard = () => {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '30px' }} className="mobile-grid">
-           {/* Supervised Analysts Section */}
            <div>
             <div className="card">
               <h4 className="outfit" style={{ marginBottom: '20px' }}>Analistas que Supervisiono</h4>
               <div style={{ display: 'grid', gap: '15px' }}>
-                {myAnalysts.map((a: any) => (
-                  <div key={a.uid} className="glass" style={{ padding: '15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h6 style={{ margin: 0, fontSize: '1rem' }}>{a.name} {!a.isRegistered && <span style={{ fontSize: '0.6rem', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', verticalAlign: 'middle', marginLeft: '5px' }}>Pendente</span>}</h6>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{patients.filter(p => p.analistaUid === a.uid || (p.analistaCpf && p.analistaCpf === a.cpf)).length} pacientes</p>
-                    </div>
-                    {a.isRegistered && (
+                {myAnalysts.map((a: any) => {
+                  const analystPatientsCount = myPatients.filter(p => {
+                    const cleanP = sanitizeCpf(p.analistaCpf);
+                    const cleanA = sanitizeCpf(a.cpf);
+                    return (p.analistaUid && p.analistaUid === a.uid) || (cleanP && cleanP === cleanA);
+                  }).length;
+
+                  return (
+                    <div key={a.id || a.cpf} className="glass" style={{ padding: '15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h6 style={{ margin: 0, fontSize: '1rem' }}>
+                          {a.name} {!a.isRegistered && <span style={{ fontSize: '0.6rem', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', verticalAlign: 'middle', marginLeft: '5px' }}>Pendente</span>}
+                        </h6>
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{analystPatientsCount} pacientes</p>
+                      </div>
                       <button 
                         className="btn btn-primary" 
                         style={{ fontSize: '0.7rem', padding: '6px 12px' }}
@@ -218,9 +218,9 @@ const SupervisorDashboard = () => {
                       >
                         Novo Relato
                       </button>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
                 {myAnalysts.length === 0 && (
                   <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', padding: '20px' }}>Nenhum analista vinculado.</p>
                 )}
@@ -228,15 +228,14 @@ const SupervisorDashboard = () => {
             </div>
           </div>
 
-          {/* List of Patients and their Evolutions */}
           <div>
             <div className="card">
               <h4 className="outfit" style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}><History size={20}/> Evolução dos Casos</h4>
               <div style={{ display: 'grid', gap: '20px' }}>
-                {patients.sort((a,b) => a.name.localeCompare(b.name)).map(p => {
+                {myPatients.sort((a,b) => a.name.localeCompare(b.name)).map(p => {
                   const patientProntuarios = prontuarios.filter(pr => pr.patientId === p.id).sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
                   const patientPayments = payments.filter(pay => pay.patientId === p.id);
-                  const analista = analysts.find(a => a.uid === p.analistaUid || (p.analistaCpf && p.analistaCpf === a.cpf));
+                  const analista = myAnalysts.find(a => (a.uid && a.uid === p.analistaUid) || (sanitizeCpf(p.analistaCpf) === sanitizeCpf(a.cpf)));
                   
                   return (
                     <div key={p.id} className="glass" style={{ padding: '20px', borderRadius: '20px' }}>
@@ -264,64 +263,65 @@ const SupervisorDashboard = () => {
                         </div>
                       </div>
 
-                      {expandedPatientId === p.id && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          style={{ borderTop: '1px solid #f1f5f9', marginTop: '15px', paddingTop: '20px' }}
-                        >
-                          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '20px' }} className="mobile-grid">
-                            {/* Evolution History */}
-                            <div>
-                              <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, marginBottom: '15px' }}>Histórico Evolutivo</h6>
-                              {patientProntuarios.length > 0 ? (
-                                <div style={{ display: 'grid', gap: '12px' }}>
-                                  {patientProntuarios.map(pr => (
-                                    <div key={pr.id} style={{ background: 'white', padding: '15px', borderRadius: '15px', fontSize: '0.85rem', border: '1px solid rgba(0,0,0,0.04)' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                        <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{pr.type}</span>
-                                        <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>{new Date(pr.date).toLocaleDateString('pt-BR')}</span>
+                      <AnimatePresence>
+                        {expandedPatientId === p.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            style={{ borderTop: '1px solid #f1f5f9', marginTop: '15px', paddingTop: '20px', overflow: 'hidden' }}
+                          >
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.5fr) 1fr', gap: '20px' }} className="mobile-grid">
+                              <div>
+                                <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, marginBottom: '15px' }}>Histórico Evolutivo</h6>
+                                {patientProntuarios.length > 0 ? (
+                                  <div style={{ display: 'grid', gap: '12px' }}>
+                                    {patientProntuarios.map(pr => (
+                                      <div key={pr.id} style={{ background: 'white', padding: '15px', borderRadius: '15px', fontSize: '0.85rem', border: '1px solid rgba(0,0,0,0.04)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                          <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{pr.type}</span>
+                                          <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>{new Date(pr.date).toLocaleDateString('pt-BR')}</span>
+                                        </div>
+                                        <p style={{ margin: 0, color: 'var(--text-main)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{pr.content}</p>
                                       </div>
-                                      <p style={{ margin: 0, color: 'var(--text-main)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{pr.content}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', background: '#f8fafc', padding: '20px', borderRadius: '15px' }}>Sem registros.</p>
-                              )}
-                            </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', background: '#f8fafc', padding: '20px', borderRadius: '15px' }}>Sem registros.</p>
+                                )}
+                              </div>
 
-                            {/* Financial Analysis */}
-                            <div>
-                              <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, marginBottom: '15px' }}>Repasses</h6>
-                              {patientPayments.length > 0 ? (
-                                <div style={{ display: 'grid', gap: '10px' }}>
-                                  {patientPayments.map(pay => (
-                                    <div key={pay.id} style={{ background: 'white', padding: '12px', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(0,0,0,0.04)' }}>
-                                      <div>
-                                        <span style={{ fontWeight: 700 }}>R$ {pay.value.toFixed(2)}</span>
-                                        <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.6 }}>{new Date(pay.paymentDate || pay.createdAt?.toDate()).toLocaleDateString('pt-BR')}</p>
+                              <div>
+                                <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, marginBottom: '15px' }}>Repasses</h6>
+                                {patientPayments.length > 0 ? (
+                                  <div style={{ display: 'grid', gap: '10px' }}>
+                                    {patientPayments.map(pay => (
+                                      <div key={pay.id} style={{ background: 'white', padding: '12px', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(0,0,0,0.04)' }}>
+                                        <div>
+                                          <span style={{ fontWeight: 700 }}>R$ {pay.value.toFixed(2)}</span>
+                                          <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.6 }}>{new Date(pay.paymentDate || pay.createdAt?.toDate()).toLocaleDateString('pt-BR')}</p>
+                                        </div>
+                                        <span style={{ 
+                                          fontSize: '0.65rem', 
+                                          padding: '4px 10px', 
+                                          borderRadius: '100px', 
+                                          background: pay.repasseConfirmado ? '#dcfce7' : '#fee2e2', 
+                                          color: pay.repasseConfirmado ? '#16a34a' : '#ef4444',
+                                          fontWeight: 700
+                                        }}>
+                                          {pay.repasseConfirmado ? 'Pago' : 'Pendente'}
+                                        </span>
                                       </div>
-                                      <span style={{ 
-                                        fontSize: '0.65rem', 
-                                        padding: '4px 10px', 
-                                        borderRadius: '100px', 
-                                        background: pay.repasseConfirmado ? '#dcfce7' : '#fee2e2', 
-                                        color: pay.repasseConfirmado ? '#16a34a' : '#ef4444',
-                                        fontWeight: 700
-                                      }}>
-                                        {pay.repasseConfirmado ? 'Pago' : 'Pendente'}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', background: '#f8fafc', padding: '20px', borderRadius: '15px' }}>Nenhum.</p>
-                              )}
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', background: '#f8fafc', padding: '20px', borderRadius: '15px' }}>Nenhum.</p>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </motion.div>
-                      )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   );
                 })}
