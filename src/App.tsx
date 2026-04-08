@@ -4,6 +4,9 @@ import Login from './pages/Login';
 import AnalistaDashboard from './pages/Analista/Dashboard';
 import PatientDetails from './pages/Analista/PatientDetails';
 import CoordenacaoDashboard from './pages/Coordenacao/Dashboard';
+import ManageUsers from './pages/Coordenacao/ManageUsers';
+import NewUser from './pages/Coordenacao/NewUser';
+import Financial from './pages/Coordenacao/Financial';
 import SupervisorDashboard from './pages/Supervisor/Dashboard';
 
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role?: string }) => {
@@ -51,6 +54,33 @@ function App() {
             element={
               <ProtectedRoute role="coordenacao">
                 <CoordenacaoDashboard />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/coordenacao/usuarios" 
+            element={
+              <ProtectedRoute role="coordenacao">
+                <ManageUsers />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/coordenacao/usuarios/novo" 
+            element={
+              <ProtectedRoute role="coordenacao">
+                <NewUser />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/coordenacao/financeiro" 
+            element={
+              <ProtectedRoute role="coordenacao">
+                <Financial />
               </ProtectedRoute>
             } 
           />
