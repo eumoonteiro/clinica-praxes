@@ -70,29 +70,28 @@ const SupervisorDashboard = () => {
 
     const supervisorName = userData.name;
     const list: any[] = [];
-    const processedCpfs = new Set();
 
-    // 1. Get supervised analysts from registered collection
-    allRegisteredUsers.forEach((r: any) => {
-      if (r.supervisor === supervisorName) {
-        list.push({ ...r, isRegistered: true });
-        processedCpfs.add(sanitizeCpf(r.cpf));
-      }
-    });
-
-    // 2. Add supervised analysts from authorized collection if not already in registered
+    // Source of truth for supervision: authorized users list
     allAuthorizedUsers.forEach((a: any) => {
-      const cleanCpf = sanitizeCpf(a.cpf);
-      if (a.supervisor === supervisorName && !processedCpfs.has(cleanCpf)) {
-        list.push({ ...a, isRegistered: false, uid: '' });
-        processedCpfs.add(cleanCpf);
+      if (a.supervisor === supervisorName) {
+        const cleanAuthCpf = sanitizeCpf(a.cpf);
+        // Look for matching registration
+        const matchingReg = allRegisteredUsers.find(r => sanitizeCpf(r.cpf) === cleanAuthCpf);
+        
+        list.push({
+          ...a,
+          uid: matchingReg?.uid || '',
+          isRegistered: !!matchingReg,
+          // Use name from registration if available, otherwise from auth
+          name: matchingReg?.name || a.name 
+        });
       }
     });
 
     const analystCpfs = list.map(a => sanitizeCpf(a.cpf));
     const analystUids = list.filter(a => a.uid).map(a => a.uid);
 
-    // 3. Filter patients assigned to any of these analysts
+    // Filter patients assigned to any of these analysts
     const patients = allPatients.filter((p: any) => {
       const cleanPatientAnalystCpf = sanitizeCpf(p.analistaCpf);
       return (p.analistaUid && analystUids.includes(p.analistaUid)) || 
