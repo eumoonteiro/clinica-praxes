@@ -12,11 +12,13 @@ import {
 } from 'firebase/firestore';
 
 import { 
-  LogOut, 
-  Users, 
+  LogOut,
+  Users,
   TrendingUp,
   Plus,
-  DollarSign
+  DollarSign,
+  Settings,
+  X
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -31,6 +33,10 @@ const AnalistaDashboard = () => {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [filterMonth, setFilterMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [filterPatientId, setFilterPatientId] = useState('');
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     if (!userData) return;
@@ -69,6 +75,33 @@ const AnalistaDashboard = () => {
     }
   };
 
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userData) return;
+    setLoadingProfile(true);
+    try {
+      await updateDoc(doc(db, 'usuarios_clinica', userData.uid), {
+        name: editName,
+        email: editEmail
+      });
+      // Also update auth profile if needed
+      // await updateProfile(auth.currentUser!, { displayName: editName });
+      alert('Perfil atualizado com sucesso! Recarregue para ver as mudanças.');
+      setShowProfileModal(false);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    if (userData) {
+      setEditName(userData.name || '');
+      setEditEmail(userData.email || '');
+    }
+  }, [userData, showProfileModal]);
+
   const filteredPayments = payments.filter(pay => {
     const payDate = pay.paymentDate || '';
     const matchesMonth = payDate.startsWith(`${filterYear}-${filterMonth}`);
@@ -90,9 +123,14 @@ const AnalistaDashboard = () => {
             <h1 className="outfit">Olá, {userData?.name}</h1>
             <p style={{ color: 'var(--text-muted)' }}>Membro Analista • Práxis Clínica</p>
           </div>
-          <button className="btn" style={{ background: '#fee2e2', color: '#ef4444' }} onClick={() => auth.signOut()}>
-            Sair <LogOut size={18} />
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button className="btn" style={{ background: '#f1f5f9', color: 'var(--primary)' }} onClick={() => setShowProfileModal(true)}>
+              Meu Perfil <Settings size={18} />
+            </button>
+            <button className="btn" style={{ background: '#fee2e2', color: '#ef4444' }} onClick={() => auth.signOut()}>
+              Sair <LogOut size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -281,6 +319,62 @@ const AnalistaDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <button 
+              onClick={() => setShowProfileModal(false)}
+              style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+            >
+              <X size={20} />
+            </button>
+            <h3 className="outfit" style={{ marginBottom: '25px' }}>Editar Perfil</h3>
+            <form onSubmit={handleUpdateProfile}>
+              <div className="form-group">
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px', display: 'block' }}>Nome Completo</label>
+                <input 
+                  className="form-control" 
+                  value={editName} 
+                  onChange={e => setEditName(e.target.value)} 
+                  required 
+                />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px', display: 'block' }}>E-mail</label>
+                <input 
+                  type="email" 
+                  className="form-control" 
+                  value={editEmail} 
+                  onChange={e => setEditEmail(e.target.value)} 
+                  required 
+                />
+              </div>
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
+                style={{ width: '100%', marginTop: '10px' }}
+                disabled={loadingProfile}
+              >
+                {loadingProfile ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

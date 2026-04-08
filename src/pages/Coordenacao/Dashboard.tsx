@@ -18,7 +18,10 @@ import {
   UserCheck,
   UserPlus,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Edit2,
+  Calendar,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -29,13 +32,18 @@ const CoordenacaoDashboard = () => {
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedAnalystId, setExpandedAnalystId] = useState<string | null>(null);
+  const [showEditMemberModal, setShowEditMemberModal] = useState(false);
+  const [editingMember, setEditingMember]: [any, any] = useState(null);
 
   // Form states
   const [newCpf, setNewCpf] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState('analista');
   const [newPatientName, setNewPatientName] = useState('');
+  const [newSupervisor, setNewSupervisor] = useState('');
+  const [newAtendimentoDesde, setNewAtendimentoDesde] = useState('');
   const [assignedAnalistaId, setAssignedAnalistaId] = useState('');
+  const [assignedAnalistaCpf, setAssignedAnalistaCpf] = useState('');
 
   const currentYear = new Date().getFullYear().toString();
   const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
@@ -68,31 +76,62 @@ const CoordenacaoDashboard = () => {
         cpf: newCpf.replace(/\D/g, ''),
         name: newName,
         role: newRole,
-        supervisor: '',
+        supervisor: newSupervisor,
+        atendimentoDesde: newAtendimentoDesde,
         activeInClinic: true,
         createdAt: new Date()
       });
-      setNewCpf(''); setNewName('');
+      setNewCpf(''); setNewName(''); setNewSupervisor(''); setNewAtendimentoDesde('');
       alert('Usuário autorizado!');
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
   const handleAddPatient = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPatientName || !assignedAnalistaId) return;
+    if (!newPatientName || (!assignedAnalistaId && !assignedAnalistaCpf)) return;
     setLoading(true);
     try {
       await addDoc(collection(db, 'pacientes'), {
         name: newPatientName,
-        analistaUid: assignedAnalistaId,
+        analistaUid: assignedAnalistaId || '',
+        analistaCpf: assignedAnalistaCpf || '',
         status: 'Ativo',
         reasonStopped: '',
         assignedAt: new Date().toISOString().split('T')[0],
         createdAt: new Date(),
         files: []
       });
-      setNewPatientName(''); setAssignedAnalistaId('');
+      setNewPatientName(''); setAssignedAnalistaId(''); setAssignedAnalistaCpf('');
       alert('Paciente atribuído!');
+    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
+  };
+
+  const handleUpdateMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember) return;
+    setLoading(true);
+    try {
+      // Update authorized user (source of truth)
+      const authDocRef = doc(db, 'usuarios_autorizados', editingMember.authDocId);
+      await updateDoc(authDocRef, {
+        name: editingMember.name,
+        role: editingMember.role,
+        supervisor: editingMember.supervisor || '',
+        atendimentoDesde: editingMember.atendimentoDesde || ''
+      });
+
+      // Update registered user if exists
+      if (editingMember.uid) {
+        const regDocRef = doc(db, 'usuarios_clinica', editingMember.uid);
+        await updateDoc(regDocRef, {
+          name: editingMember.name,
+          email: editingMember.email,
+          role: editingMember.role
+        });
+      }
+
+      alert('Membro atualizado com sucesso!');
+      setShowEditMemberModal(false);
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
@@ -129,11 +168,15 @@ const CoordenacaoDashboard = () => {
         id: ru.id,
         uid: ru.uid,
         name: ru.name,
+        email: ru.email,
         cpf: ru.cpf,
         role: ru.role || auMatch?.role || 'analista',
         activeInClinic: auMatch?.activeInClinic ?? true,
         isRegistered: true,
-        activePatients: patients.filter(p => p.analistaUid === ru.uid && p.status === 'Ativo').length
+        atendimentoDesde: auMatch?.atendimentoDesde || '',
+        supervisor: auMatch?.supervisor || '',
+        authDocId: auMatch?.id,
+        activePatients: patients.filter(p => (p.analistaUid === ru.uid || (p.analistaCpf && p.analistaCpf === ru.cpf)) && p.status === 'Ativo').length
       });
       if (ru.cpf) processedCpfs.add(ru.cpf);
     });
@@ -148,7 +191,10 @@ const CoordenacaoDashboard = () => {
         role: au.role || 'analista',
         activeInClinic: au.activeInClinic ?? true,
         isRegistered: false,
-        activePatients: 0
+        atendimentoDesde: au.atendimentoDesde || '',
+        supervisor: au.supervisor || '',
+        authDocId: au.id,
+        activePatients: patients.filter(p => p.analistaCpf === au.cpf && p.status === 'Ativo').length
       });
     });
 
@@ -233,11 +279,17 @@ const CoordenacaoDashboard = () => {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn" title="Toggle Status" style={{ padding: '6px', background: analyst.activeInClinic ? '#fee2e2' : '#dcfce7', color: analyst.activeInClinic ? '#ef4444' : '#16a34a' }} onClick={() => updateMemberStatus(analyst.id, !analyst.activeInClinic)}>
+                        <button className="btn" title="Editar" style={{ padding: '6px', background: '#f1f5f9' }} onClick={() => {
+                          setEditingMember({...analyst});
+                          setShowEditMemberModal(true);
+                        }}>
+                          <Edit2 size={14} color="var(--primary)"/>
+                        </button>
+                        <button className="btn" title="Toggle Status" style={{ padding: '6px', background: analyst.activeInClinic ? '#fee2e2' : '#dcfce7', color: analyst.activeInClinic ? '#ef4444' : '#16a34a' }} onClick={() => updateMemberStatus(analyst.authDocId || analyst.id, !analyst.activeInClinic)}>
                           <UserCheck size={14}/>
                         </button>
                         <button className="btn" title="Remover" style={{ padding: '6px', background: '#f1f5f9' }} onClick={() => {
-                          if(confirm('Remover autorização?')) deleteDoc(doc(db, 'usuarios_autorizados', analyst.id));
+                          if(confirm('Remover autorização?')) deleteDoc(doc(db, 'usuarios_autorizados', analyst.authDocId || analyst.id));
                         }}>
                           <Trash2 size={14} color="#ef4444"/>
                         </button>
@@ -255,11 +307,12 @@ const CoordenacaoDashboard = () => {
                           <div style={{ padding: '15px' }}>
                             <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '10px', textTransform: 'uppercase' }}>Pacientes Atribuídos:</p>
                             <div style={{ display: 'grid', gap: '8px' }}>
-                              {patients.filter(p => p.analistaUid === analyst.uid).map(patient => (
+                              {patients.filter(p => p.analistaUid === analyst.uid || (p.analistaCpf && p.analistaCpf === analyst.cpf)).map(patient => (
                                 <div key={patient.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', borderRadius: '10px' }}>
                                   <div>
                                     <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{patient.name}</span>
                                     <span style={{ marginLeft: '8px', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '100px', background: patient.status === 'Ativo' ? '#dcfce7' : '#fee2e2', color: patient.status === 'Ativo' ? '#16a34a' : '#ef4444' }}>{patient.status}</span>
+                                    {!patient.analistaUid && <span style={{ marginLeft: '8px', fontSize: '0.65rem', background: '#fef3c7', color: '#92400e', borderRadius: '4px', padding: '2px 6px' }}>Vínculo por CPF</span>}
                                   </div>
                                   <div style={{ display: 'flex', gap: '8px' }}>
                                     <a href={`/paciente/${patient.id}`} className="btn" style={{ padding: '4px 8px', fontSize: '0.65rem', background: 'var(--secondary)', color: 'white' }}>
@@ -268,7 +321,7 @@ const CoordenacaoDashboard = () => {
                                   </div>
                                 </div>
                               ))}
-                              {patients.filter(p => p.analistaUid === analyst.uid).length === 0 && (
+                              {patients.filter(p => p.analistaUid === analyst.uid || (p.analistaCpf && analyst.cpf && p.analistaCpf === analyst.cpf)).length === 0 && (
                                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '10px' }}>Nenhum paciente vinculado.</p>
                               )}
                             </div>
@@ -295,10 +348,24 @@ const CoordenacaoDashboard = () => {
                 </div>
                 <div className="form-group">
                   <label style={{ fontSize: '0.8rem' }}>Responsável Técnico</label>
-                  <select className="form-control" value={assignedAnalistaId} onChange={e => setAssignedAnalistaId(e.target.value)} required>
+                  <select 
+                    className="form-control" 
+                    value={assignedAnalistaId || assignedAnalistaCpf} 
+                    onChange={e => {
+                      const selected = technicalStaff.find(s => (s.uid === e.target.value) || (s.cpf === e.target.value));
+                      if (selected?.isRegistered) {
+                        setAssignedAnalistaId(selected.uid);
+                        setAssignedAnalistaCpf('');
+                      } else {
+                        setAssignedAnalistaId('');
+                        setAssignedAnalistaCpf(selected?.cpf || '');
+                      }
+                    }} 
+                    required
+                  >
                     <option value="">Selecione...</option>
-                    {registeredUsers.filter(u => u.role !== 'coordenacao').map(u => (
-                      <option key={u.uid} value={u.uid}>{u.name}</option>
+                    {technicalStaff.filter(u => u.role !== 'coordenacao').map(u => (
+                      <option key={u.id} value={u.uid || u.cpf}>{u.isRegistered ? u.name : `(Pendente) ${u.name}`}</option>
                     ))}
                   </select>
                 </div>
@@ -326,6 +393,19 @@ const CoordenacaoDashboard = () => {
                     <option value="supervisor">Supervisor</option>
                     <option value="coordenacao">Coordenação</option>
                   </select>
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '0.8rem' }}>Supervisor Associado</label>
+                  <select className="form-control" value={newSupervisor} onChange={e => setNewSupervisor(e.target.value)}>
+                    <option value="">Nenhum</option>
+                    {technicalStaff.filter(s => s.role === 'supervisor').map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '0.8rem' }}>Atende desde</label>
+                  <input type="date" className="form-control" value={newAtendimentoDesde} onChange={e => setNewAtendimentoDesde(e.target.value)} />
                 </div>
                 <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%' }}>Gerar Autorização</button>
               </form>
@@ -369,8 +449,59 @@ const CoordenacaoDashboard = () => {
               </tbody>
             </table>
           </div>
-        </div>
       </div>
+
+      {/* Edit Member Modal */}
+      {showEditMemberModal && editingMember && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+            <button onClick={() => setShowEditMemberModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={20} />
+            </button>
+            <h3 className="outfit" style={{ marginBottom: '25px' }}>Editar Membro</h3>
+            <form onSubmit={handleUpdateMember}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nome Completo</label>
+                  <input className="form-control" value={editingMember.name} onChange={e => setEditingMember({...editingMember, name: e.target.value})} required />
+                </div>
+                {editingMember.isRegistered && (
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>E-mail</label>
+                    <input type="email" className="form-control" value={editingMember.email} onChange={e => setEditingMember({...editingMember, email: e.target.value})} required />
+                  </div>
+                )}
+                <div className="form-group">
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Papel</label>
+                  <select className="form-control" value={editingMember.role} onChange={e => setEditingMember({...editingMember, role: e.target.value})}>
+                    <option value="analista">Analista</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="coordenacao">Coordenação</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Supervisor Responsável</label>
+                  <select className="form-control" value={editingMember.supervisor} onChange={e => setEditingMember({...editingMember, supervisor: e.target.value})}>
+                    <option value="">Nenhum</option>
+                    {technicalStaff.filter(s => s.role === 'supervisor').map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Atende desde</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type="date" className="form-control" value={editingMember.atendimentoDesde} onChange={e => setEditingMember({...editingMember, atendimentoDesde: e.target.value})} />
+                    <Calendar size={14} style={{ position: 'absolute', right: '12px', top: '12px', color: 'var(--text-muted)' }} />
+                  </div>
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '20px' }}>Salvar Alterações</button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>

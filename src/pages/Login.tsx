@@ -14,7 +14,8 @@ import {
   where, 
   getDocs, 
   doc, 
-  setDoc 
+  setDoc,
+  updateDoc 
 } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Mail, ClipboardList, AlertCircle, CheckCircle2, ArrowLeft, Activity } from 'lucide-react';
@@ -83,6 +84,17 @@ const Login = () => {
           role: authorizedData.role || 'analista',
           createdAt: new Date()
         });
+
+        // Link patients previously assigned via CPF
+        const qPatients = query(collection(db, 'pacientes'), where('analistaCpf', '==', cpf));
+        const patientsSnap = await getDocs(qPatients);
+        const updates = patientsSnap.docs.map(pDoc => 
+          updateDoc(doc(db, 'pacientes', pDoc.id), {
+            analistaUid: newUser.uid,
+            analistaCpf: ''
+          })
+        );
+        await Promise.all(updates);
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
       }
