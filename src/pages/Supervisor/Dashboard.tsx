@@ -39,24 +39,50 @@ const SupervisorDashboard = () => {
   const [loadingReport, setLoadingReport] = useState(false);
 
   useEffect(() => {
-    // 1. Fetch Analysts to see who I supervise
-    const unsubAnalysts = onSnapshot(collection(db, 'usuarios_clinica'), (snapshot) => {
-      const allAnalysts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAnalysts(allAnalysts);
+    // 1. Fetch Analysts (both registered and authorized)
+    const unsubAuth = onSnapshot(collection(db, 'usuarios_autorizados'), (authSnap) => {
+      const auths = authSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      const myAnalysts = allAnalysts.filter((a: any) => a.supervisor === userData?.name);
-      const myAnalystUids = myAnalysts.map((a: any) => a.uid);
-      
-      // 2. Fetch Patients and filter
-      const unsubPatients = onSnapshot(collection(db, 'pacientes'), (pSnapshot) => {
-        const allPatients = pSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const filteredPatients = userData?.role === 'supervisor' 
-          ? allPatients.filter((p: any) => myAnalystUids.includes(p.analistaUid))
-          : allPatients;
-        setPatients(filteredPatients);
-      });
+      const unsubReg = onSnapshot(collection(db, 'usuarios_clinica'), (regSnap) => {
+        const regs = regSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Combine them
+        const list: any[] = [];
+        const processedCpfs = new Set();
+        
+        regs.forEach((r: any) => {
+          if (r.supervisor === userData?.name) {
+            list.push({ ...r, isRegistered: true });
+            processedCpfs.add(r.cpf);
+          }
+        });
+        
+        auths.forEach((a: any) => {
+          if (a.supervisor === userData?.name && !processedCpfs.has(a.cpf)) {
+            list.push({ ...a, isRegistered: false, uid: '' });
+          }
+        });
+        
+        setAnalysts(list);
+        
+        const myAnalystUids = list.filter(a => a.uid).map(a => a.uid);
+        const myAnalystCpfs = list.map(a => a.cpf);
 
-      return () => unsubPatients();
+        // 2. Fetch Patients and filter
+        const unsubPatients = onSnapshot(collection(db, 'pacientes'), (pSnapshot) => {
+          const allPatients = pSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const filteredPatients = userData?.role === 'supervisor' 
+            ? allPatients.filter((p: any) => 
+                (p.analistaUid && myAnalystUids.includes(p.analistaUid)) || 
+                (p.analistaCpf && myAnalystCpfs.includes(p.analistaCpf))
+              )
+            : allPatients;
+          setPatients(filteredPatients);
+        });
+
+        return () => unsubPatients();
+      });
+      return () => unsubReg();
     });
 
     const unsubPayments = onSnapshot(collection(db, 'pagamentos'), (snapshot) => {
@@ -68,7 +94,7 @@ const SupervisorDashboard = () => {
     });
 
     return () => {
-      unsubAnalysts();
+      unsubAuth();
       unsubPayments();
       unsubProntuarios();
     };
@@ -178,19 +204,21 @@ const SupervisorDashboard = () => {
                 {myAnalysts.map((a: any) => (
                   <div key={a.uid} className="glass" style={{ padding: '15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h6 style={{ margin: 0, fontSize: '1rem' }}>{a.name}</h6>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{patients.filter(p => p.analistaUid === a.uid).length} pacientes</p>
+                      <h6 style={{ margin: 0, fontSize: '1rem' }}>{a.name} {!a.isRegistered && <span style={{ fontSize: '0.6rem', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', verticalAlign: 'middle', marginLeft: '5px' }}>Pendente</span>}</h6>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{patients.filter(p => p.analistaUid === a.uid || (p.analistaCpf && p.analistaCpf === a.cpf)).length} pacientes</p>
                     </div>
-                    <button 
-                      className="btn btn-primary" 
-                      style={{ fontSize: '0.7rem', padding: '6px 12px' }}
-                      onClick={() => {
-                        setSelectedAnalyst(a);
-                        setShowReportModal(true);
-                      }}
-                    >
-                      Novo Relato
-                    </button>
+                    {a.isRegistered && (
+                      <button 
+                        className="btn btn-primary" 
+                        style={{ fontSize: '0.7rem', padding: '6px 12px' }}
+                        onClick={() => {
+                          setSelectedAnalyst(a);
+                          setShowReportModal(true);
+                        }}
+                      >
+                        Novo Relato
+                      </button>
+                    )}
                   </div>
                 ))}
                 {myAnalysts.length === 0 && (
@@ -208,7 +236,7 @@ const SupervisorDashboard = () => {
                 {patients.sort((a,b) => a.name.localeCompare(b.name)).map(p => {
                   const patientProntuarios = prontuarios.filter(pr => pr.patientId === p.id).sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
                   const patientPayments = payments.filter(pay => pay.patientId === p.id);
-                  const analista = analysts.find(a => a.uid === p.analistaUid);
+                  const analista = analysts.find(a => a.uid === p.analistaUid || (p.analistaCpf && p.analistaCpf === a.cpf));
                   
                   return (
                     <div key={p.id} className="glass" style={{ padding: '20px', borderRadius: '20px' }}>

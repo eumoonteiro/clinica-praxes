@@ -9,12 +9,9 @@ import {
   Users, 
   DollarSign, 
   Award,
-  UserPlus,
   ArrowRight,
-  ClipboardList,
   ChevronDown,
-  ChevronUp,
-  MessageSquare
+  ChevronUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -52,6 +49,8 @@ const CoordenacaoDashboard = () => {
   const totalPacientesAtivos = patients.filter(p => p.status === 'Ativo').length;
   
   const supervisors = registeredUsers.filter(u => u.role === 'supervisor');
+  const analysts = registeredUsers.filter(u => u.role === 'analista');
+  const pendingUsers = authorizedUsers.filter(au => !registeredUsers.some(ru => ru.cpf === au.cpf));
 
   return (
     <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '40px 0' }}>
@@ -67,153 +66,139 @@ const CoordenacaoDashboard = () => {
           </button>
         </div>
 
-        {/* Quick Actions Hub */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-          <button onClick={() => navigate('/coordenacao/usuarios/novo')} className="card action-card" style={{ textAlign: 'left', cursor: 'pointer', border: 'none', transition: 'transform 0.2s' }}>
-            <div style={{ background: 'var(--accent-glow)', color: 'var(--secondary)', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px' }}>
-              <UserPlus size={24}/>
-            </div>
-            <h4 className="outfit">Novos Membros/Pacientes</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '5px' }}>Autorizar profissionais e vincular casos</p>
-            <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--secondary)', fontWeight: 600, fontSize: '0.9rem' }}>
-              Acessar <ArrowRight size={16}/>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/coordenacao/usuarios')} className="card action-card" style={{ textAlign: 'left', cursor: 'pointer', border: 'none', transition: 'transform 0.2s' }}>
-            <div style={{ background: '#e0e7ff', color: '#4338ca', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px' }}>
-              <Users size={24}/>
-            </div>
-            <h4 className="outfit">Gestão de Usuários</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '5px' }}>Editar permissões e monitorar analistas</p>
-            <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '5px', color: '#4338ca', fontWeight: 600, fontSize: '0.9rem' }}>
-              Acessar <ArrowRight size={16}/>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/coordenacao/financeiro')} className="card action-card" style={{ textAlign: 'left', cursor: 'pointer', border: 'none', transition: 'transform 0.2s' }}>
-            <div style={{ background: '#dcfce7', color: '#16a34a', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px' }}>
-              <DollarSign size={24}/>
-            </div>
-            <h4 className="outfit">Financeiro</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '5px' }}>Controle de mensalidades e repasses</p>
-            <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '5px', color: '#16a34a', fontWeight: 600, fontSize: '0.9rem' }}>
-              Acessar <ArrowRight size={16}/>
-            </div>
-          </button>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '30px' }} className="mobile-grid">
-          {/* Supervisors & Relationships Block */}
-          <div>
-            <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Award size={20} color="var(--secondary)"/> Núcleos de Supervisão
-              </h4>
-              <div style={{ display: 'grid', gap: '15px' }}>
-                {supervisors.map(sv => {
-                   const supervisedAnalysts = registeredUsers.filter(u => {
-                      const au = authorizedUsers.find(a => a.cpf === u.cpf);
-                      return au?.supervisor === sv.name;
-                   });
-                   const svRelatos = relatos.filter(r => r.supervisorUid === sv.uid);
-
-                   return (
-                    <div key={sv.uid} className="glass" style={{ padding: '15px', borderRadius: '20px' }}>
-                      <div 
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                        onClick={() => setExpandedSupervisorId(expandedSupervisorId === sv.uid ? null : sv.uid)}
-                      >
-                        <div>
-                          <h5 style={{ margin: 0 }}>{sv.name}</h5>
-                          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{supervisedAnalysts.length} analistas vinculados</p>
-                        </div>
-                        {expandedSupervisorId === sv.uid ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
-                      </div>
-
-                      <AnimatePresence>
-                        {expandedSupervisorId === sv.uid && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            style={{ overflow: 'hidden' }}
-                          >
-                            <div style={{ marginTop: '20px', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
-                              <h6 style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>Analistas:</h6>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
-                                {supervisedAnalysts.map(an => (
-                                  <span key={an.uid} style={{ fontSize: '0.8rem', padding: '4px 12px', background: 'white', borderRadius: '100px', border: '1px solid #e2e8f0' }}>
-                                    {an.name}
-                                  </span>
-                                ))}
-                                {supervisedAnalysts.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nenhum analista vinculado.</p>}
-                              </div>
-
-                              <h6 style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>Relatos de Supervisão:</h6>
-                              <div style={{ display: 'grid', gap: '10px' }}>
-                                {svRelatos.sort((a,b) => b.createdAt?.seconds - a.createdAt?.seconds).map(r => (
-                                  <div key={r.id} style={{ background: 'white', padding: '12px', borderRadius: '12px', fontSize: '0.85rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                                      <span style={{ fontWeight: 700, color: 'var(--primary)' }}>Analista: {r.analistaName}</span>
-                                      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{new Date(r.date).toLocaleDateString('pt-BR')}</span>
-                                    </div>
-                                    <p style={{ margin: 0, lineHeight: '1.4', color: 'var(--text-main)', opacity: 0.8 }}>{r.content}</p>
-                                  </div>
-                                ))}
-                                {svRelatos.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '10px', background: '#f8fafc', borderRadius: '10px' }}>Não há relatos registrados.</p>}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                   )
-                })}
+        {/* FEATURED BLOCKS */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '30px', marginBottom: '40px' }}>
+          
+          {/* User Management FEATURED BLOCK */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderTop: '5px solid #4338ca' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+                <div style={{ background: '#e0e7ff', color: '#4338ca', padding: '12px', borderRadius: '12px' }}><Users size={28}/></div>
+                <h3 className="outfit" style={{ margin: 0 }}>Gestão de Usuários</h3>
               </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '20px' }}>
+                Controle total sobre a equipe clínica. Gerencie permissões, edite perfis e acompanhe o engajamento dos profissionais.
+              </p>
+              <div style={{ display: 'grid', gap: '10px', marginBottom: '25px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span>Analistas Registrados</span>
+                  <strong style={{ color: '#4338ca' }}>{analysts.length}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span>Supervisores</span>
+                  <strong style={{ color: '#4338ca' }}>{supervisors.length}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span>Aguardando Registro</span>
+                  <strong style={{ color: '#f59e0b' }}>{pendingUsers.length}</strong>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button onClick={() => navigate('/coordenacao/usuarios')} className="btn btn-primary" style={{ background: '#4338ca', fontSize: '0.85rem' }}>
+                Gerenciar Equipe
+              </button>
+              <button onClick={() => navigate('/coordenacao/usuarios/novo')} className="btn" style={{ background: '#f1f5f9', color: 'var(--primary)', fontSize: '0.85rem' }}>
+                Novo Cadastro
+              </button>
             </div>
           </div>
 
-          {/* Quick Info / Summaries */}
-          <div style={{ display: 'grid', gap: '20px', alignContent: 'start' }}>
-             <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ background: 'var(--accent-glow)', color: 'var(--secondary)', padding: '10px', borderRadius: '10px' }}>
-                  <ClipboardList size={20}/>
+          {/* Clinical Financial FEATURED BLOCK */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderTop: '5px solid #16a34a' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+                <div style={{ background: '#dcfce7', color: '#16a34a', padding: '12px', borderRadius: '12px' }}><DollarSign size={28}/></div>
+                <h3 className="outfit" style={{ margin: 0 }}>Financeiro da Clínica</h3>
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '20px' }}>
+                Acompanhe o fluxo de caixa, repasses técnicos e o desempenho financeiro institucional deste mês.
+              </p>
+              <div style={{ display: 'grid', gap: '10px', marginBottom: '25px' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span>Pacientes Ativos</span>
+                  <strong style={{ color: '#16a34a' }}>{totalPacientesAtivos}</strong>
                 </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Membros Ativos</span>
-                  <p style={{ margin: 0, fontWeight: 700 }}>{registeredUsers.length} profissionais</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span>Status do Mês</span>
+                  <span style={{ color: '#16a34a', fontWeight: 700 }}>{currentMonth}/{currentYear}</span>
                 </div>
-             </div>
+              </div>
+            </div>
+            <button onClick={() => navigate('/coordenacao/financeiro')} className="btn" style={{ width: '100%', background: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>
+              Ver Relatório Completo <ArrowRight size={18} style={{ marginLeft: '8px' }}/>
+            </button>
+          </div>
+        </div>
 
-             <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ background: '#dcfce7', color: '#16a34a', padding: '10px', borderRadius: '10px' }}>
-                  <Users size={20}/>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pacientes Ativos</span>
-                  <p style={{ margin: 0, fontWeight: 700 }}>{totalPacientesAtivos} pacientes</p>
-                </div>
-             </div>
+        {/* Nucleos de Supervisão Section */}
+        <div className="card" style={{ borderTop: '5px solid var(--secondary)' }}>
+          <h3 className="outfit" style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Award size={28} color="var(--secondary)"/> Núcleos de Supervisão Clínica
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
+            {supervisors.map(sv => {
+                const supervisedAnalysts = registeredUsers.filter(u => {
+                  const au = authorizedUsers.find(a => a.cpf === u.cpf);
+                  return au?.supervisor === sv.name;
+                });
+                const svRelatos = relatos.filter(r => r.supervisorUid === sv.uid);
 
-             <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ background: '#e0e7ff', color: '#4338ca', padding: '10px', borderRadius: '10px' }}>
-                  <MessageSquare size={20}/>
+                return (
+                <div key={sv.uid} className="glass" style={{ padding: '15px', borderRadius: '20px' }}>
+                  <div 
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    onClick={() => setExpandedSupervisorId(expandedSupervisorId === sv.uid ? null : sv.uid)}
+                  >
+                    <div>
+                      <h5 style={{ margin: 0 }}>{sv.name}</h5>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{supervisedAnalysts.length} analistas vinculados</p>
+                    </div>
+                    {expandedSupervisorId === sv.uid ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                  </div>
+
+                  <AnimatePresence>
+                    {expandedSupervisorId === sv.uid && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div style={{ marginTop: '20px', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
+                          <h6 style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>Analistas:</h6>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
+                            {supervisedAnalysts.map(an => (
+                              <span key={an.uid} style={{ fontSize: '0.8rem', padding: '4px 12px', background: 'white', borderRadius: '100px', border: '1px solid #e2e8f0' }}>
+                                {an.name}
+                              </span>
+                            ))}
+                            {supervisedAnalysts.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nenhum analista vinculado.</p>}
+                          </div>
+
+                          <h6 style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>Relatos de Supervisão:</h6>
+                          <div style={{ display: 'grid', gap: '10px' }}>
+                            {svRelatos.sort((a,b) => b.createdAt?.seconds - a.createdAt?.seconds).map(r => (
+                              <div key={r.id} style={{ background: 'white', padding: '12px', borderRadius: '12px', fontSize: '0.85rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                  <span style={{ fontWeight: 700, color: 'var(--primary)' }}>Analista: {r.analistaName}</span>
+                                  <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{new Date(r.date).toLocaleDateString('pt-BR')}</span>
+                                </div>
+                                <p style={{ margin: 0, lineHeight: '1.4', color: 'var(--text-main)', opacity: 0.8 }}>{r.content}</p>
+                              </div>
+                            ))}
+                            {svRelatos.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '10px', background: '#f8fafc', borderRadius: '10px' }}>Não há relatos registrados.</p>}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total de Relatos</span>
-                  <p style={{ margin: 0, fontWeight: 700 }}>{relatos.length} registros</p>
-                </div>
-             </div>
+                )
+            })}
           </div>
         </div>
       </div>
-      <style>{`
-        .action-card:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 10px 20px rgba(0,0,0,0.05);
-        }
-      `}</style>
     </div>
   );
 };
