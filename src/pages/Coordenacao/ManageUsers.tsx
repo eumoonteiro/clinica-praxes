@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { 
   collection, 
   onSnapshot, 
   doc, 
   deleteDoc, 
-  updateDoc 
+  updateDoc,
+  getDocs 
 } from 'firebase/firestore';
 import { 
   Award,
@@ -106,6 +107,44 @@ const ManageUsers = () => {
     try {
       await updateDoc(doc(db, 'usuarios_autorizados', userId), { activeInClinic: status });
     } catch (err: any) { alert(err.message); }
+  };
+
+  const handleSystemReset = async () => {
+    if (!confirm('AVISO CRÍTICO: Esta ação irá deletar TODOS os usuários (exceto você), pacientes, prontuários, relatos e pagamentos. Deseja prosseguir com o RESET TOTAL?')) return;
+    if (!confirm('ÚLTIMO AVISO: Todos os dados serão perdidos. Confirmar reset?')) return;
+    
+    try {
+      // 1. Delete all reports
+      const relatSnap = await getDocs(collection(db, 'relatos_supervisao'));
+      for (const d of relatSnap.docs) await deleteDoc(d.ref);
+
+      // 2. Delete all payments
+      const paySnap = await getDocs(collection(db, 'pagamentos'));
+      for (const d of paySnap.docs) await deleteDoc(d.ref);
+
+      // 3. Delete all evolution history
+      const prontSnap = await getDocs(collection(db, 'prontuarios'));
+      for (const d of prontSnap.docs) await deleteDoc(d.ref);
+
+      // 4. Reset/Delete patients
+      const patSnap = await getDocs(collection(db, 'pacientes'));
+      for (const d of patSnap.docs) await deleteDoc(d.ref); // Or just unassign? User said reset everything except coord.
+
+      // 5. Delete users (except current one)
+      const currentUserCpf = registeredUsers.find(ru => ru.uid === auth.currentUser?.uid)?.cpf;
+
+      for (const au of authorizedUsers) {
+        if (au.cpf !== currentUserCpf) await deleteDoc(doc(db, 'usuarios_autorizados', au.id));
+      }
+
+      for (const ru of registeredUsers) {
+        if (ru.uid !== auth.currentUser?.uid) await deleteDoc(doc(db, 'usuarios_clinica', ru.id));
+      }
+
+      alert('Sistema resetado com sucesso! Apenas sua conta de coordenação foi preservada.');
+    } catch (err: any) {
+      alert('Erro no reset: ' + err.message);
+    }
   };
 
   const technicalStaff = (() => {
@@ -258,6 +297,17 @@ const ManageUsers = () => {
                 </AnimatePresence>
               </div>
             ))}
+          </div>
+          
+          <div style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px dashed #fee2e2' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>Zona de Perigo: Estas ações são irreversíveis.</p>
+            <button 
+              className="btn" 
+              style={{ background: '#fee2e2', color: '#ef4444', fontWeight: 600, fontSize: '0.8rem' }}
+              onClick={handleSystemReset}
+            >
+              Resetar Sistema (Manter apenas minha conta)
+            </button>
           </div>
         </div>
       </div>
