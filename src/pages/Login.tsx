@@ -32,6 +32,10 @@ const Login = () => {
   const [cpf, setCpf] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  
+  // Re-activation state
+  const [needsCpfLink, setNeedsCpfLink] = useState(false);
+  const [tempUser, setTempUser] = useState<any>(null);
 
   useEffect(() => {
     if (user && userData) {
@@ -60,6 +64,38 @@ const Login = () => {
     }
   };
 
+  const handleLinkCpf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cpf || !tempUser) return;
+    setLoading(true);
+    setError('');
+    try {
+      const q = query(collection(db, 'usuarios_autorizados'), where('cpf', '==', cpf.replace(/\D/g, '')));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        throw new Error('Este CPF não possui autorização ativa na clínica. Verifique com a coordenação.');
+      }
+
+      const authData = snap.docs[0].data();
+      await setDoc(doc(db, 'usuarios_clinica', tempUser.uid), {
+        uid: tempUser.uid,
+        name: authData.name,
+        email: tempUser.email,
+        cpf: cpf.replace(/\D/g, ''),
+        role: authData.role || 'analista',
+        createdAt: new Date()
+      });
+
+      alert('Perfil reativado com sucesso!');
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -67,9 +103,9 @@ const Login = () => {
     setSuccess('');
     try {
       if (isRegistering) {
-        const q = query(collection(db, 'usuarios_autorizados'), where('cpf', '==', cpf));
+        const q = query(collection(db, 'usuarios_autorizados'), where('cpf', '==', cpf.replace(/\D/g, '')));
         const snap = await getDocs(q);
-        if (snap.empty) throw new Error('CPF não autorizado pela coordenação.');
+        if (snap.empty) throw new Error('Este CPF não está autorizado. Procure a coordenação.');
 
         const authorizedData = snap.docs[0].data();
         let userCredential;
@@ -78,8 +114,7 @@ const Login = () => {
           userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         } catch (authErr: any) {
           if (authErr.code === 'auth/email-already-in-use') {
-             // If email exists, tell them to login instead
-             throw new Error('Este e-mail já está cadastrado. Por favor, faça login para reativar seu perfil.');
+             throw new Error('E-mail já cadastrado. Tente entrar via "Fazer Login" para reativar seu perfil.');
           }
           throw authErr;
         }
@@ -90,63 +125,43 @@ const Login = () => {
           uid: newUser.uid,
           name: authorizedData.name,
           email: email.trim(),
-          cpf,
+          cpf: cpf.replace(/\D/g, ''),
           role: authorizedData.role || 'analista',
           createdAt: new Date()
         });
 
-        // Link patients previously assigned via CPF
-        const qPatients = query(collection(db, 'pacientes'), where('analistaCpf', '==', cpf));
+        // Link patients
+        const qPatients = query(collection(db, 'pacientes'), where('analistaCpf', '==', cpf.replace(/\D/g, '')));
         const patientsSnap = await getDocs(qPatients);
-        const updates = patientsSnap.docs.map(pDoc => 
-          updateDoc(doc(db, 'pacientes', pDoc.id), {
+        for (const p of patientsSnap.docs) {
+          await updateDoc(doc(db, 'pacientes', p.id), {
             analistaUid: newUser.uid,
             analistaCpf: ''
-          })
-        );
-        await Promise.all(updates);
+          });
+        }
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
         const loggedUser = userCredential.user;
 
-        // CHECK IF FIRESTORE DOC EXISTS. IF NOT, TRY TO RECREATE IT IF AUTHORIZED
         const docSnap = await getDocs(query(collection(db, 'usuarios_clinica'), where('uid', '==', loggedUser.uid)));
         
         if (docSnap.empty) {
-          // Profile was probably deleted in a reset. Look for authorization by email or name.
-          const qAuth = query(collection(db, 'usuarios_autorizados'), where('name', '==', loggedUser.displayName || ''));
-          const authSnap = await getDocs(qAuth);
-          
-          if (!authSnap.empty) {
-            const authData = authSnap.docs[0].data();
-            await setDoc(doc(db, 'usuarios_clinica', loggedUser.uid), {
-              uid: loggedUser.uid,
-              name: authData.name,
-              email: loggedUser.email,
-              cpf: authData.cpf,
-              role: authData.role || 'analista',
-              createdAt: new Date()
-            });
-            // Refresh to ensure context updates
-            window.location.reload();
-          } else {
-            // No auth found!
-            await auth.signOut();
-            throw new Error('Sua conta não possui autorização ativa na clínica. Procure a coordenação.');
-          }
+          // Profile was deleted in reset. Start link flow.
+          setTempUser(loggedUser);
+          setNeedsCpfLink(true);
+          setLoading(false);
+          return;
         }
       }
     } catch (err: any) {
       console.error(err);
       const messages: Record<string, string> = {
-        'auth/email-already-in-use': 'Este e-mail já está em uso. Tente fazer login.',
         'auth/invalid-credential': 'E-mail ou senha incorretos.',
-        'auth/weak-password': 'A senha deve ter pelo menos 6 caracteres.',
         'auth/user-not-found': 'Usuário não cadastrado.'
       };
       setError(err.message || messages[err.code] || 'Ocorreu um erro inesperado.');
     } finally {
-      setLoading(false);
+      if (!needsCpfLink) setLoading(false);
     }
   };
 
@@ -176,7 +191,7 @@ const Login = () => {
             <Activity size={35} color="white" />
           </div>
           <h2 className="outfit" style={{ fontSize: '2rem', color: '#1e293b', marginBottom: '8px' }}>Práxis Clínica</h2>
-          <p style={{ color: '#64748b' }}>{resetMode ? 'Recuperar acesso' : isRegistering ? 'Criar nova conta' : 'Acesse seu painel'}</p>
+          <p style={{ color: '#64748b' }}>{needsCpfLink ? 'Vincular seu CPF' : resetMode ? 'Recuperar acesso' : isRegistering ? 'Criar nova conta' : 'Acesse seu painel'}</p>
         </div>
 
         <AnimatePresence mode="wait">
@@ -196,56 +211,77 @@ const Login = () => {
           )}
         </AnimatePresence>
 
-        <form onSubmit={resetMode ? handleResetPassword : handleAuth}>
-          {isRegistering && (
-            <div className="form-group" style={{ marginBottom: '20px' }}>
+        {needsCpfLink ? (
+          <form key="link-form" onSubmit={handleLinkCpf}>
+             <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '20px', textAlign: 'center', lineHeight: '1.5' }}>
+               Seu perfil foi reiniciado. Para recuperar seu acesso e pacientes, informe o **CPF** autorizado pela coordenação.
+             </p>
+             <div className="form-group" style={{ marginBottom: '20px' }}>
               <label style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '8px', display: 'block' }}>CPF (Somente números)</label>
               <div style={{ position: 'relative' }}>
-                <input className="login-input" style={inputStyle} value={cpf} onChange={e => setCpf(e.target.value.replace(/\D/g, ''))} placeholder="00000000000" required />
+                <input className="login-input" style={inputStyle} value={cpf} onChange={e => setCpf(e.target.value.replace(/\D/g, ''))} placeholder="000.000.000-00" required />
                 <ClipboardList size={18} style={{ position: 'absolute', left: '15px', top: '14px', color: '#94a3b8' }} />
               </div>
             </div>
-          )}
-
-          <div className="form-group" style={{ marginBottom: '20px' }}>
-            <label style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '8px', display: 'block' }}>E-mail</label>
-            <div style={{ position: 'relative' }}>
-              <input type="email" className="login-input" style={inputStyle} value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required />
-              <Mail size={18} style={{ position: 'absolute', left: '15px', top: '14px', color: '#94a3b8' }} />
-            </div>
-          </div>
-
-          {!resetMode && (
-            <div className="form-group" style={{ marginBottom: '25px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={{ fontSize: '0.85rem', color: '#475569' }}>Senha</label>
-                {!isRegistering && (
-                  <span style={{ fontSize: '0.8rem', color: '#4f46e5', cursor: 'pointer', fontWeight: 600 }} onClick={() => setResetMode(true)}>Esqueceu?</span>
-                )}
+            <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%' }}>
+              {loading ? 'Verificando...' : 'Vincular e Entrar'}
+            </button>
+            <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.8rem', color: '#6366f1', cursor: 'pointer', fontWeight: 600 }} onClick={() => { setNeedsCpfLink(false); auth.signOut(); }}>Cancelar</p>
+          </form>
+        ) : (
+          <form key="auth-form" onSubmit={resetMode ? handleResetPassword : handleAuth}>
+            {isRegistering && (
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '8px', display: 'block' }}>CPF (Somente números)</label>
+                <div style={{ position: 'relative' }}>
+                  <input className="login-input" style={inputStyle} value={cpf} onChange={e => setCpf(e.target.value.replace(/\D/g, ''))} placeholder="000.000.000-00" required />
+                  <ClipboardList size={18} style={{ position: 'absolute', left: '15px', top: '14px', color: '#94a3b8' }} />
+                </div>
               </div>
+            )}
+
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '8px', display: 'block' }}>E-mail</label>
               <div style={{ position: 'relative' }}>
-                <input type="password" className="login-input" style={inputStyle} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
-                <Lock size={18} style={{ position: 'absolute', left: '15px', top: '14px', color: '#94a3b8' }} />
+                <input type="email" className="login-input" style={inputStyle} value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required />
+                <Mail size={18} style={{ position: 'absolute', left: '15px', top: '14px', color: '#94a3b8' }} />
               </div>
             </div>
-          )}
 
-          <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%' }}>
-            {loading ? 'Processando...' : resetMode ? 'Enviar Link de Recuperação' : isRegistering ? 'Criar minha conta' : 'Entrar no sistema'}
-          </button>
-        </form>
+            {!resetMode && (
+              <div className="form-group" style={{ marginBottom: '25px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#475569' }}>Senha</label>
+                  {!isRegistering && (
+                    <span style={{ fontSize: '0.8rem', color: '#4f46e5', cursor: 'pointer', fontWeight: 600 }} onClick={() => setResetMode(true)}>Esqueceu?</span>
+                  )}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input type="password" className="login-input" style={inputStyle} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+                  <Lock size={18} style={{ position: 'absolute', left: '15px', top: '14px', color: '#94a3b8' }} />
+                </div>
+              </div>
+            )}
 
-        <div style={{ textAlign: 'center', marginTop: '25px', fontSize: '0.9rem', color: '#64748b' }}>
-          {resetMode ? (
-            <p style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }} onClick={() => setResetMode(false)}>
-              <ArrowLeft size={16} /> Voltar para o login
-            </p>
-          ) : isRegistering ? (
-            <p>Já possui uma conta? <span style={{ color: '#4f46e5', fontWeight: 700, cursor: 'pointer' }} onClick={() => setIsRegistering(false)}>Fazer Login</span></p>
-          ) : (
-            <p>Primeiro acesso? <span style={{ color: '#4f46e5', fontWeight: 700, cursor: 'pointer' }} onClick={() => setIsRegistering(true)}>Cadastrar com CPF</span></p>
-          )}
-        </div>
+            <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%' }}>
+              {loading ? 'Processando...' : resetMode ? 'Enviar Link de Recuperação' : isRegistering ? 'Criar minha conta' : 'Entrar no sistema'}
+            </button>
+          </form>
+        )}
+
+        {!needsCpfLink && (
+          <div style={{ textAlign: 'center', marginTop: '25px', fontSize: '0.9rem', color: '#64748b' }}>
+            {resetMode ? (
+              <p style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }} onClick={() => setResetMode(false)}>
+                <ArrowLeft size={16} /> Voltar para o login
+              </p>
+            ) : isRegistering ? (
+              <p>Já possui uma conta? <span style={{ color: '#4f46e5', fontWeight: 700, cursor: 'pointer' }} onClick={() => setIsRegistering(false)}>Fazer Login</span></p>
+            ) : (
+              <p>Primeiro acesso? <span style={{ color: '#4f46e5', fontWeight: 700, cursor: 'pointer' }} onClick={() => setIsRegistering(true)}>Cadastrar com CPF</span></p>
+            )}
+          </div>
+        )}
       </motion.div>
     </div>
   );
