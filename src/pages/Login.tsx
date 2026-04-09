@@ -72,9 +72,19 @@ const Login = () => {
         if (snap.empty) throw new Error('CPF não autorizado pela coordenação.');
 
         const authorizedData = snap.docs[0].data();
-        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        const newUser = userCredential.user;
+        let userCredential;
+        
+        try {
+          userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        } catch (authErr: any) {
+          if (authErr.code === 'auth/email-already-in-use') {
+             // If email exists, tell them to login instead
+             throw new Error('Este e-mail já está cadastrado. Por favor, faça login para reativar seu perfil.');
+          }
+          throw authErr;
+        }
 
+        const newUser = userCredential.user;
         await updateProfile(newUser, { displayName: authorizedData.name });
         await setDoc(doc(db, 'usuarios_clinica', newUser.uid), {
           uid: newUser.uid,
@@ -96,7 +106,35 @@ const Login = () => {
         );
         await Promise.all(updates);
       } else {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+        const loggedUser = userCredential.user;
+
+        // CHECK IF FIRESTORE DOC EXISTS. IF NOT, TRY TO RECREATE IT IF AUTHORIZED
+        const docSnap = await getDocs(query(collection(db, 'usuarios_clinica'), where('uid', '==', loggedUser.uid)));
+        
+        if (docSnap.empty) {
+          // Profile was probably deleted in a reset. Look for authorization by email or name.
+          const qAuth = query(collection(db, 'usuarios_autorizados'), where('name', '==', loggedUser.displayName || ''));
+          const authSnap = await getDocs(qAuth);
+          
+          if (!authSnap.empty) {
+            const authData = authSnap.docs[0].data();
+            await setDoc(doc(db, 'usuarios_clinica', loggedUser.uid), {
+              uid: loggedUser.uid,
+              name: authData.name,
+              email: loggedUser.email,
+              cpf: authData.cpf,
+              role: authData.role || 'analista',
+              createdAt: new Date()
+            });
+            // Refresh to ensure context updates
+            window.location.reload();
+          } else {
+            // No auth found!
+            await auth.signOut();
+            throw new Error('Sua conta não possui autorização ativa na clínica. Procure a coordenação.');
+          }
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -104,9 +142,9 @@ const Login = () => {
         'auth/email-already-in-use': 'Este e-mail já está em uso. Tente fazer login.',
         'auth/invalid-credential': 'E-mail ou senha incorretos.',
         'auth/weak-password': 'A senha deve ter pelo menos 6 caracteres.',
-        'auth/user-not-found': 'Usuário não encontrado.'
+        'auth/user-not-found': 'Usuário não cadastrado.'
       };
-      setError(messages[err.code] || err.message);
+      setError(err.message || messages[err.code] || 'Ocorreu um erro inesperado.');
     } finally {
       setLoading(false);
     }
