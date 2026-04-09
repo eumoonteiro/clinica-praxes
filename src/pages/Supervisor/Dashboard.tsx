@@ -12,22 +12,24 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   LogOut, 
   Users, 
-  History,
-  MessageCircle,
   Activity,
   Settings,
-  X
+  X,
+  ChevronDown,
+  ChevronUp,
+  FileText
 } from 'lucide-react';
 
 const SupervisorDashboard = () => {
   const { userData } = useAuth();
   
   const [allPatients, setAllPatients] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
   const [prontuarios, setProntuarios] = useState<any[]>([]);
   const [allRegisteredUsers, setAllRegisteredUsers] = useState<any[]>([]);
   const [allAuthorizedUsers, setAllAuthorizedUsers] = useState<any[]>([]);
+  const [allRelatos, setAllRelatos] = useState<any[]>([]);
 
+  const [expandedAnalystId, setExpandedAnalystId] = useState<string | null>(null);
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -39,7 +41,6 @@ const SupervisorDashboard = () => {
   const [selectedAnalyst, setSelectedAnalyst] = useState<any>(null);
   const [loadingReport, setLoadingReport] = useState(false);
 
-  // Helper to sanitize CPF for comparison
   const sanitizeCpf = (cpf: string) => cpf?.replace(/\D/g, '') || '';
 
   useEffect(() => {
@@ -52,37 +53,30 @@ const SupervisorDashboard = () => {
     const unsubPatients = onSnapshot(collection(db, 'pacientes'), (snap) => {
       setAllPatients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    const unsubPayments = onSnapshot(collection(db, 'pagamentos'), (snap) => {
-      setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
     const unsubProntuarios = onSnapshot(collection(db, 'prontuarios'), (snap) => {
       setProntuarios(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+    const unsubRelatos = onSnapshot(collection(db, 'relatos_supervisao'), (snap) => {
+      setAllRelatos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
 
     return () => {
-      unsubAuth(); unsubReg(); unsubPatients(); unsubPayments(); unsubProntuarios();
+      unsubAuth(); unsubReg(); unsubPatients(); unsubProntuarios(); unsubRelatos();
     };
   }, []);
 
-  // Compute My Analysts and My Patients
   const { myAnalysts, myPatients } = useMemo(() => {
     if (!userData) return { myAnalysts: [], myPatients: [] };
 
-    // Standardize supervisor name for matching
     const myName = userData.name?.trim().toLowerCase() || '';
     const myEmail = userData.email?.trim().toLowerCase() || '';
-    
     const list: any[] = [];
 
-    // Source of truth: authorized list
     allAuthorizedUsers.forEach((a: any) => {
       const authSupervisor = a.supervisor?.trim().toLowerCase() || '';
-      
-      // Match if the supervisor name in auth equals my name OR my email (as a fallback)
       if (authSupervisor === myName || (authSupervisor && myEmail.includes(authSupervisor))) {
         const cleanAuthCpf = sanitizeCpf(a.cpf);
         const matchingReg = allRegisteredUsers.find(r => sanitizeCpf(r.cpf) === cleanAuthCpf);
-        
         list.push({
           ...a,
           uid: matchingReg?.uid || '',
@@ -95,7 +89,6 @@ const SupervisorDashboard = () => {
     const analystCpfs = list.map(a => sanitizeCpf(a.cpf));
     const analystUids = list.filter(a => a.uid).map(a => a.uid);
 
-    // Filter patients assigned to any of these analysts
     const patients = allPatients.filter((p: any) => {
       const cleanPatientAnalystCpf = sanitizeCpf(p.analistaCpf);
       return (p.analistaUid && analystUids.includes(p.analistaUid)) || 
@@ -104,13 +97,6 @@ const SupervisorDashboard = () => {
 
     return { myAnalysts: list, myPatients: patients };
   }, [userData, allRegisteredUsers, allAuthorizedUsers, allPatients]);
-
-  useEffect(() => {
-    if (userData) {
-      setEditName(userData.name || '');
-      setEditEmail(userData.email || '');
-    }
-  }, [userData, showProfileModal]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,145 +177,166 @@ const SupervisorDashboard = () => {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '30px' }} className="mobile-grid">
-           <div>
-            <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '20px' }}>Analistas que Supervisiono</h4>
-              <div style={{ display: 'grid', gap: '15px' }}>
-                {myAnalysts.map((a: any) => {
-                  const analystPatientsCount = myPatients.filter(p => {
-                    const cleanP = sanitizeCpf(p.analistaCpf);
-                    const cleanA = sanitizeCpf(a.cpf);
-                    return (p.analistaUid && p.analistaUid === a.uid) || (cleanP && cleanP === cleanA);
-                  }).length;
+        {/* Main Content: Analyst Focus */}
+        <div className="card">
+          <h4 className="outfit" style={{ marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Users size={24} color="var(--primary)"/> Núcleos sob minha Supervisão
+          </h4>
+          
+          <div style={{ display: 'grid', gap: '25px' }}>
+            {myAnalysts.map((analyst: any) => {
+              const analystId = analyst.uid || analyst.cpf;
+              const isExpanded = expandedAnalystId === analystId;
+              
+              const myAnalystPatients = myPatients.filter(p => {
+                const cleanP = sanitizeCpf(p.analistaCpf);
+                const cleanA = sanitizeCpf(analyst.cpf);
+                return (p.analistaUid && p.analistaUid === analyst.uid) || (cleanP && cleanP === cleanA);
+              });
+              
+              const myAnalystRelatos = allRelatos.filter(r => (r.analistaUid && r.analistaUid === analyst.uid) || (r.analistaCpf && r.analistaCpf === analyst.cpf)).sort((a,b) => b.createdAt?.seconds - a.createdAt?.seconds);
 
-                  return (
-                    <div key={a.id || a.cpf} className="glass" style={{ padding: '15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h6 style={{ margin: 0, fontSize: '1rem' }}>
-                          {a.name} {!a.isRegistered && <span style={{ fontSize: '0.6rem', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', verticalAlign: 'middle', marginLeft: '5px' }}>Pendente</span>}
-                        </h6>
-                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{analystPatientsCount} pacientes</p>
+              return (
+                <div key={analystId} className="glass" style={{ padding: '0', borderRadius: '25px', overflow: 'hidden', border: isExpanded ? '2px solid var(--primary)' : '1px solid #e2e8f0' }}>
+                  {/* Analyst Banner/Header */}
+                  <div 
+                    style={{ padding: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: isExpanded ? '#f8faff' : 'white' }}
+                    onClick={() => setExpandedAnalystId(isExpanded ? null : analystId)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                      <div style={{ width: '50px', height: '50px', background: 'var(--primary)', color: 'white', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 700 }}>
+                        {analyst.name.charAt(0)}
                       </div>
+                      <div>
+                        <h5 style={{ margin: 0, fontSize: '1.2rem' }}>
+                          {analyst.name}
+                          {!analyst.isRegistered && <span style={{ fontSize: '0.65rem', background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '6px', marginLeft: '10px' }}>Registro Pendente</span>}
+                        </h5>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          {myAnalystPatients.length} pacientes • {myAnalystRelatos.length} relatos de supervisão
+                        </p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                       <button 
                         className="btn btn-primary" 
-                        style={{ fontSize: '0.7rem', padding: '6px 12px' }}
-                        onClick={() => {
-                          setSelectedAnalyst(a);
+                        style={{ fontSize: '0.8rem', padding: '8px 16px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAnalyst(analyst);
                           setShowReportModal(true);
                         }}
                       >
                         Novo Relato
                       </button>
+                      {isExpanded ? <ChevronUp /> : <ChevronDown />}
                     </div>
-                  );
-                })}
-                {myAnalysts.length === 0 && (
-                  <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', padding: '20px' }}>Nenhum analista vinculado.</p>
-                )}
-              </div>
-            </div>
-          </div>
+                  </div>
 
-          <div>
-            <div className="card">
-              <h4 className="outfit" style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}><History size={20}/> Evolução dos Casos</h4>
-              <div style={{ display: 'grid', gap: '20px' }}>
-                {myPatients.sort((a,b) => a.name.localeCompare(b.name)).map(p => {
-                  const patientProntuarios = prontuarios.filter(pr => pr.patientId === p.id).sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
-                  const patientPayments = payments.filter(pay => pay.patientId === p.id);
-                  const analista = myAnalysts.find(a => (a.uid && a.uid === p.analistaUid) || (sanitizeCpf(p.analistaCpf) === sanitizeCpf(a.cpf)));
-                  
-                  return (
-                    <div key={p.id} className="glass" style={{ padding: '20px', borderRadius: '20px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                        <div>
-                          <h5 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--primary)' }}>{p.name}</h5>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0' }}>Analista: <strong>{analista?.name || 'Não identificado'}</strong></p>
-                          <span style={{ fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', background: '#f1f5f9', color: 'var(--text-main)', marginTop: '8px', display: 'inline-block' }}>
-                            Periodicidade: {p.evolucaoFrequencia || 'Não definida'}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            {p.phone && (
-                              <a href={`https://wa.me/55${p.phone}`} target="_blank" className="btn" style={{ background: '#25d366', color: 'white', padding: '8px' }}>
-                                <MessageCircle size={16}/>
-                              </a>
-                            )}
-                            <button 
-                              className="btn" 
-                              style={{ background: 'var(--accent-glow)', color: 'var(--secondary)', fontSize: '0.8rem', padding: '6px 15px' }}
-                              onClick={() => setExpandedPatientId(expandedPatientId === p.id ? null : p.id)}
-                            >
-                              {expandedPatientId === p.id ? 'Fechar' : 'Ver Ficha'}
-                            </button>
-                        </div>
-                      </div>
-
-                      <AnimatePresence>
-                        {expandedPatientId === p.id && (
-                          <motion.div 
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            style={{ borderTop: '1px solid #f1f5f9', marginTop: '15px', paddingTop: '20px', overflow: 'hidden' }}
-                          >
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.5fr) 1fr', gap: '20px' }} className="mobile-grid">
-                              <div>
-                                <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, marginBottom: '15px' }}>Histórico Evolutivo</h6>
-                                {patientProntuarios.length > 0 ? (
-                                  <div style={{ display: 'grid', gap: '12px' }}>
-                                    {patientProntuarios.map(pr => (
-                                      <div key={pr.id} style={{ background: 'white', padding: '15px', borderRadius: '15px', fontSize: '0.85rem', border: '1px solid rgba(0,0,0,0.04)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                          <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{pr.type}</span>
-                                          <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>{new Date(pr.date).toLocaleDateString('pt-BR')}</span>
-                                        </div>
-                                        <p style={{ margin: 0, color: 'var(--text-main)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{pr.content}</p>
+                  {/* Expanded Content */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div style={{ padding: '30px', borderTop: '1px solid #e2e8f0', background: 'white' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1.5fr) 1fr', gap: '40px' }} className="mobile-grid">
+                            
+                            {/* Patients Column */}
+                            <div>
+                               <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                 <Activity size={16}/> Evolução dos Pacientes
+                               </h6>
+                               <div style={{ display: 'grid', gap: '15px' }}>
+                                  {myAnalystPatients.map(p => {
+                                    const isPatientExpanded = expandedPatientId === p.id;
+                                    const patientProntuarios = prontuarios.filter(pr => pr.patientId === p.id).sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
+                                    
+                                    return (
+                                      <div key={p.id} style={{ border: '1px solid #f1f5f9', borderRadius: '16px', padding: '15px' }}>
+                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                              <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{p.name}</span>
+                                              <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)' }}>Periodicidade: {p.evolucaoFrequencia || 'Semanal'}</p>
+                                            </div>
+                                            <button 
+                                              className="btn" 
+                                              style={{ padding: '4px 12px', fontSize: '0.7rem', background: isPatientExpanded ? '#f1f5f9' : 'var(--accent-glow)', color: isPatientExpanded ? 'var(--text-muted)' : 'var(--secondary)' }}
+                                              onClick={() => setExpandedPatientId(isPatientExpanded ? null : p.id)}
+                                            >
+                                              {isPatientExpanded ? 'Fechar' : 'Ver Evolução'}
+                                            </button>
+                                         </div>
+                                         <AnimatePresence>
+                                            {isPatientExpanded && (
+                                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
+                                                <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #f1f5f9' }}>
+                                                  {patientProntuarios.length > 0 ? (
+                                                    <div style={{ display: 'grid', gap: '10px' }}>
+                                                      {patientProntuarios.map(pr => (
+                                                        <div key={pr.id} style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', fontSize: '0.8rem' }}>
+                                                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                                            <strong style={{ color: 'var(--primary)' }}>{pr.type}</strong>
+                                                            <span style={{ opacity: 0.6 }}>{new Date(pr.date).toLocaleDateString('pt-BR')}</span>
+                                                          </div>
+                                                          <p style={{ margin: 0, lineHeight: '1.4' }}>{pr.content}</p>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>Nenhum prontuário registrado.</p>
+                                                  )}
+                                                </div>
+                                              </motion.div>
+                                            )}
+                                         </AnimatePresence>
                                       </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', background: '#f8fafc', padding: '20px', borderRadius: '15px' }}>Sem registros.</p>
-                                )}
-                              </div>
-
-                              <div>
-                                <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, marginBottom: '15px' }}>Repasses</h6>
-                                {patientPayments.length > 0 ? (
-                                  <div style={{ display: 'grid', gap: '10px' }}>
-                                    {patientPayments.map(pay => (
-                                      <div key={pay.id} style={{ background: 'white', padding: '12px', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(0,0,0,0.04)' }}>
-                                        <div>
-                                          <span style={{ fontWeight: 700 }}>R$ {pay.value.toFixed(2)}</span>
-                                          <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.6 }}>{new Date(pay.paymentDate || pay.createdAt?.toDate()).toLocaleDateString('pt-BR')}</p>
-                                        </div>
-                                        <span style={{ 
-                                          fontSize: '0.65rem', 
-                                          padding: '4px 10px', 
-                                          borderRadius: '100px', 
-                                          background: pay.repasseConfirmado ? '#dcfce7' : '#fee2e2', 
-                                          color: pay.repasseConfirmado ? '#16a34a' : '#ef4444',
-                                          fontWeight: 700
-                                        }}>
-                                          {pay.repasseConfirmado ? 'Pago' : 'Pendente'}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', background: '#f8fafc', padding: '20px', borderRadius: '15px' }}>Nenhum.</p>
-                                )}
-                              </div>
+                                    )
+                                  })}
+                                  {myAnalystPatients.length === 0 && <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Este analista ainda não possui pacientes vinculados.</p>}
+                               </div>
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
+
+                            {/* Reports Column */}
+                            <div style={{ borderLeft: '1px solid #f1f5f9', paddingLeft: '40px' }} className="mobile-no-border">
+                              <h6 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                 <FileText size={16}/> Relatos de Supervisão
+                               </h6>
+                               <div style={{ display: 'grid', gap: '15px' }}>
+                                  {myAnalystRelatos.map(r => (
+                                    <div key={r.id} style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #f1f5f9' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{new Date(r.date).toLocaleDateString('pt-BR')}</span>
+                                      </div>
+                                      <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: '1.5', color: 'var(--text-main)' }}>{r.content}</p>
+                                    </div>
+                                  ))}
+                                  {myAnalystRelatos.length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: '30px', background: '#f8fafc', borderRadius: '20px', border: '1px dashed #e2e8f0' }}>
+                                       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nenhum relato registrado para este analista.</p>
+                                    </div>
+                                  )}
+                               </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+
+            {myAnalysts.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '25px', border: '1px dashed #e2e8f0' }}>
+                <Users size={48} color="#cbd5e1" style={{ marginBottom: '15px' }} />
+                <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Você ainda não possui analistas vinculados sob sua supervisão.</p>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -337,9 +344,9 @@ const SupervisorDashboard = () => {
       {/* Profile Modal */}
       {showProfileModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
-            <button onClick={() => setShowProfileModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-              <X size={20} />
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative', borderRadius: '25px' }}>
+            <button onClick={() => setShowProfileModal(false)} style={{ position: 'absolute', top: '25px', right: '25px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={24} />
             </button>
             <h3 className="outfit" style={{ marginBottom: '25px' }}>Editar Perfil</h3>
             <form onSubmit={handleUpdateProfile}>
@@ -351,7 +358,7 @@ const SupervisorDashboard = () => {
                 <label style={{ fontSize: '0.9rem', marginBottom: '8px', display: 'block' }}>E-mail</label>
                 <input type="email" className="form-control" value={editEmail} onChange={e => setEditEmail(e.target.value)} required />
               </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }} disabled={loadingProfile}>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px', height: '50px' }} disabled={loadingProfile}>
                 {loadingProfile ? 'Salvando...' : 'Salvar Alterações'}
               </button>
             </form>
@@ -362,12 +369,12 @@ const SupervisorDashboard = () => {
       {/* Supervision Report Modal */}
       {showReportModal && selectedAnalyst && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '600px', position: 'relative' }}>
-            <button onClick={() => setShowReportModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-              <X size={20} />
+          <div className="card" style={{ width: '100%', maxWidth: '600px', position: 'relative', borderRadius: '30px' }}>
+            <button onClick={() => setShowReportModal(false)} style={{ position: 'absolute', top: '25px', right: '25px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={24} />
             </button>
             <h3 className="outfit" style={{ marginBottom: '10px' }}>Relato de Supervisão</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '25px' }}>
               Analista: <strong>{selectedAnalyst.name}</strong>
             </p>
             
@@ -376,7 +383,7 @@ const SupervisorDashboard = () => {
                 <label style={{ fontSize: '0.9rem', marginBottom: '8px', display: 'block' }}>Conteúdo do Relato</label>
                 <textarea 
                   className="form-control" 
-                  style={{ minHeight: '200px', resize: 'vertical' }}
+                  style={{ minHeight: '200px', resize: 'vertical', borderRadius: '20px' }}
                   value={reportContent}
                   onChange={e => setReportContent(e.target.value)}
                   placeholder="Descreva aqui os pontos principais da supervisão..."
@@ -384,13 +391,13 @@ const SupervisorDashboard = () => {
                 />
               </div>
               
-              <div style={{ background: '#fef2f2', padding: '15px', borderRadius: '12px', border: '1px solid #fee2e2', marginBottom: '20px' }}>
+              <div style={{ background: '#fef2f2', padding: '20px', borderRadius: '20px', border: '1px solid #fee2e2', marginBottom: '25px' }}>
                 <p style={{ fontSize: '0.75rem', color: '#991b1b', margin: 0, lineHeight: '1.4' }}>
                   <strong>Atenção:</strong> Este relato é de acesso restrito à gestão e coordenação da clínica, utilizado exclusivamente para fins de acompanhamento institucional e ajustes técnicos.
                 </p>
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loadingReport}>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', height: '55px' }} disabled={loadingReport}>
                 {loadingReport ? 'Registrando...' : 'Finalizar Registro'}
               </button>
             </form>
