@@ -3,7 +3,9 @@ import { db } from '../../lib/firebase';
 import { 
   collection, 
   addDoc, 
-  onSnapshot 
+  onSnapshot,
+  doc,
+  updateDoc 
 } from 'firebase/firestore';
 import { 
   TrendingUp,
@@ -15,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 const NewUser = () => {
   const navigate = useNavigate();
   const [technicalStaff, setTechnicalStaff] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Auth form
@@ -54,7 +57,12 @@ const NewUser = () => {
       });
       return () => unsubReg();
     });
-    return () => unsubAuth();
+
+    const unsubPatients = onSnapshot(collection(db, 'pacientes'), (snapshot) => {
+      setPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => { unsubAuth(); unsubPatients(); };
   }, []);
 
   const handleAuthorize = async (e: React.FormEvent) => {
@@ -146,7 +154,7 @@ const NewUser = () => {
 
           <div className="card">
             <h4 className="outfit" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <UserPlus size={20}/> Atribuir Paciente
+              <UserPlus size={20}/> Atribuição Manual de Novos Casos
             </h4>
             <form onSubmit={handleAddPatient}>
               <div className="form-group">
@@ -178,6 +186,53 @@ const NewUser = () => {
               </div>
               <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%' }}>Finalizar Atribuição</button>
             </form>
+          </div>
+
+          {/* Fila de Espera / Reatribuição */}
+          <div className="card" style={{ borderTop: '5px solid #f59e0b' }}>
+            <h4 className="outfit" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+               Fila de Espera (Pacientes sem Analista)
+            </h4>
+            <div style={{ display: 'grid', gap: '15px' }}>
+               {patients.filter(p => !p.analistaUid && !p.analistaCpf).map(p => (
+                 <div key={p.id} className="glass" style={{ padding: '15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h6 style={{ margin: 0 }}>{p.name}</h6>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>Aguardando Reatribuição</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                       <select 
+                         className="form-control" 
+                         style={{ width: 'auto', fontSize: '0.8rem', padding: '5px' }}
+                         onChange={async (e) => {
+                           const val = e.target.value;
+                           if(!val) return;
+                           const selected = technicalStaff.find(att => (att.uid === val) || (att.cpf === val));
+                           if(confirm(`Atribuir ${p.name} para ${selected.name}?`)) {
+                             try {
+                               await updateDoc(doc(db, 'pacientes', p.id), {
+                                 analistaUid: selected.isRegistered ? selected.uid : '',
+                                 analistaCpf: selected.cpf,
+                                 status: 'Ativo',
+                                 assignedAt: new Date().toISOString().split('T')[0]
+                               });
+                               alert('Paciente atribuído com sucesso!');
+                             } catch(err: any) { alert(err.message); }
+                           }
+                         }}
+                       >
+                         <option value="">Atribuir para...</option>
+                         {technicalStaff.filter(ts => ts.role !== 'coordenacao').map(ts => (
+                            <option key={ts.id || ts.uid} value={ts.uid || ts.cpf}>{ts.name}</option>
+                         ))}
+                       </select>
+                    </div>
+                 </div>
+               ))}
+               {patients.filter(p => !p.analistaUid && !p.analistaCpf).length === 0 && (
+                 <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Não há pacientes aguardando atribuição no momento.</p>
+               )}
+            </div>
           </div>
         </div>
       </div>
