@@ -138,10 +138,9 @@ const CoordenacaoDashboard = () => {
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
             {supervisors.map(sv => {
-                const supervisedAnalysts = registeredUsers.filter(u => {
-                  const au = authorizedUsers.find(a => a.cpf === u.cpf);
-                  return au?.supervisor === sv.name;
-                });
+                const svNameClean = sv.name?.trim().toLowerCase();
+                // Get all authorized analysts for this supervisor
+                const svAuthorized = authorizedUsers.filter(au => au.supervisor?.trim().toLowerCase() === svNameClean);
                 const svRelatos = relatos.filter(r => r.supervisorUid === sv.uid);
 
                 return (
@@ -152,7 +151,7 @@ const CoordenacaoDashboard = () => {
                   >
                     <div>
                       <h5 style={{ margin: 0 }}>{sv.name}</h5>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{supervisedAnalysts.length} analistas vinculados</p>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{svAuthorized.length} profissionais vinculados</p>
                     </div>
                     {expandedSupervisorId === sv.uid ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
                   </div>
@@ -168,12 +167,22 @@ const CoordenacaoDashboard = () => {
                         <div style={{ marginTop: '20px', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
                           <h6 style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>Analistas:</h6>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
-                            {supervisedAnalysts.map(an => (
-                              <span key={an.uid} style={{ fontSize: '0.8rem', padding: '4px 12px', background: 'white', borderRadius: '100px', border: '1px solid #e2e8f0' }}>
-                                {an.name}
-                              </span>
-                            ))}
-                            {supervisedAnalysts.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nenhum analista vinculado.</p>}
+                            {svAuthorized.map(auth => {
+                               const isReg = registeredUsers.some(ru => ru.cpf?.replace(/\D/g, '') === auth.cpf?.replace(/\D/g, ''));
+                               return (
+                                <span key={auth.id} style={{ 
+                                  fontSize: '0.8rem', 
+                                  padding: '4px 12px', 
+                                  background: isReg ? 'white' : '#fff7ed', 
+                                  borderRadius: '100px', 
+                                  border: isReg ? '1px solid #e2e8f0' : '1px solid #fdba74',
+                                  color: isReg ? 'inherit' : '#9a3412'
+                                }}>
+                                  {auth.name} {!isReg && <span style={{fontSize: '0.65rem', opacity: 0.7}}>(Pendente)</span>}
+                                </span>
+                               );
+                            })}
+                            {svAuthorized.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nenhum analista vinculado.</p>}
                           </div>
 
                           <h6 style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>Relatos de Supervisão:</h6>

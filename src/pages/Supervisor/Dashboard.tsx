@@ -68,22 +68,25 @@ const SupervisorDashboard = () => {
   const { myAnalysts, myPatients } = useMemo(() => {
     if (!userData) return { myAnalysts: [], myPatients: [] };
 
-    const supervisorName = userData.name?.trim().toLowerCase();
+    // Standardize supervisor name for matching
+    const myName = userData.name?.trim().toLowerCase() || '';
+    const myEmail = userData.email?.trim().toLowerCase() || '';
+    
     const list: any[] = [];
 
-    // Source of truth for supervision: authorized users list
+    // Source of truth: authorized list
     allAuthorizedUsers.forEach((a: any) => {
-      const authSupervisor = a.supervisor?.trim().toLowerCase();
-      if (authSupervisor === supervisorName) {
+      const authSupervisor = a.supervisor?.trim().toLowerCase() || '';
+      
+      // Match if the supervisor name in auth equals my name OR my email (as a fallback)
+      if (authSupervisor === myName || (authSupervisor && myEmail.includes(authSupervisor))) {
         const cleanAuthCpf = sanitizeCpf(a.cpf);
-        // Look for matching registration
         const matchingReg = allRegisteredUsers.find(r => sanitizeCpf(r.cpf) === cleanAuthCpf);
         
         list.push({
           ...a,
           uid: matchingReg?.uid || '',
           isRegistered: !!matchingReg,
-          // Use name from registration if available, otherwise from auth
           name: matchingReg?.name || a.name 
         });
       }
