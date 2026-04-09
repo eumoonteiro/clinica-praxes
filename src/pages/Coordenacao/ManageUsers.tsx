@@ -72,6 +72,36 @@ const ManageUsers = () => {
     } catch (err: any) { alert(err.message); }
   };
 
+  const handleDeleteMember = async (analyst: any) => {
+    if (!confirm(`Tem certeza que deseja excluir ${analyst.name}? Esta ação removerá a autorização e o acesso do usuário, além de desvincular seus pacientes.`)) return;
+
+    try {
+      // 1. Delete authorization
+      if (analyst.authDocId) {
+        await deleteDoc(doc(db, 'usuarios_autorizados', analyst.authDocId));
+      }
+
+      // 2. Delete registration if exists
+      if (analyst.uid) {
+        await deleteDoc(doc(db, 'usuarios_clinica', analyst.id)); // Assuming analyst.id is the registered doc id (from ru.id)
+      }
+
+      // 3. Unassign patients (set back to pending or null)
+      const myPatients = patients.filter(p => p.analistaUid === analyst.uid || (p.analistaCpf && p.analistaCpf === analyst.cpf));
+      for (const p of myPatients) {
+        await updateDoc(doc(db, 'pacientes', p.id), {
+          analistaUid: '',
+          analistaCpf: '',
+          status: 'Aguardando'
+        });
+      }
+
+      alert('Usuário e vínculos removidos com sucesso!');
+    } catch (err: any) {
+      alert('Erro ao excluir: ' + err.message);
+    }
+  };
+
   const updateMemberStatus = async (userId: string, status: boolean) => {
     try {
       await updateDoc(doc(db, 'usuarios_autorizados', userId), { activeInClinic: status });
@@ -171,9 +201,7 @@ const ManageUsers = () => {
                     <button className="btn" title="Toggle Status" style={{ padding: '6px', background: analyst.activeInClinic ? '#fee2e2' : '#dcfce7', color: analyst.activeInClinic ? '#ef4444' : '#16a34a' }} onClick={() => updateMemberStatus(analyst.authDocId || analyst.id, !analyst.activeInClinic)}>
                       <UserCheck size={14}/>
                     </button>
-                    <button className="btn" title="Remover" style={{ padding: '6px', background: '#f1f5f9' }} onClick={() => {
-                      if(confirm('Remover autorização?')) deleteDoc(doc(db, 'usuarios_autorizados', analyst.authDocId || analyst.id));
-                    }}>
+                    <button className="btn" title="Remover" style={{ padding: '6px', background: '#f1f5f9' }} onClick={() => handleDeleteMember(analyst)}>
                       <Trash2 size={14} color="#ef4444"/>
                     </button>
                   </div>
