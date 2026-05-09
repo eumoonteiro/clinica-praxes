@@ -49,7 +49,14 @@ const CoordenacaoDashboard = () => {
   const totalPacientesAtivos = patients.filter(p => p.status === 'Ativo').length;
   
   const supervisors = registeredUsers.filter(u => u.role === 'supervisor');
-  const analysts = registeredUsers.filter(u => u.role === 'analista');
+  
+  // Merge registered analysts and authorized-but-not-yet-registered ones
+  const allAnalysts = [
+    ...registeredUsers.filter(u => u.role === 'analista').map(u => ({ ...u, isRegistered: true })),
+    ...authorizedUsers.filter(au => au.role === 'analista' && !registeredUsers.some(ru => ru.cpf === au.cpf))
+      .map(au => ({ ...au, isRegistered: false, uid: `pending-${au.cpf}` }))
+  ];
+
   const pendingUsers = authorizedUsers.filter(au => !registeredUsers.some(ru => ru.cpf === au.cpf));
 
   return (
@@ -82,7 +89,7 @@ const CoordenacaoDashboard = () => {
               <div style={{ display: 'grid', gap: '10px', marginBottom: '25px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span>Analistas Registrados</span>
-                  <strong style={{ color: '#4338ca' }}>{analysts.length}</strong>
+                  <strong style={{ color: '#4338ca' }}>{allAnalysts.filter(a => a.isRegistered).length}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span>Supervisores</span>
@@ -141,15 +148,20 @@ const CoordenacaoDashboard = () => {
             </p>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-              {analysts.map(analyst => {
-                const analystPatients = patients.filter(p => p.analistaUid === analyst.uid || (p.analistaCpf && p.analistaCpf.replace(/\D/g, '') === analyst.cpf?.replace(/\D/g, '')));
+              {allAnalysts.map(analyst => {
+                const analystPatients = patients.filter(p => 
+                  (p.analistaUid && p.analistaUid === analyst.uid) || 
+                  (p.analistaCpf && p.analistaCpf.replace(/\D/g, '') === analyst.cpf?.replace(/\D/g, ''))
+                );
                 const activeCount = analystPatients.filter(p => p.status === 'Ativo').length;
                 const inactiveCount = analystPatients.length - activeCount;
 
                 return (
-                  <div key={analyst.uid} className="glass" style={{ padding: '20px', borderRadius: '18px', border: '1px solid #f1f5f9' }}>
+                  <div key={analyst.uid || analyst.id} className="glass" style={{ padding: '20px', borderRadius: '18px', border: analyst.isRegistered ? '1px solid #f1f5f9' : '1px solid #fdba74' }}>
                     <div style={{ marginBottom: '15px' }}>
-                      <h5 style={{ margin: '0 0 5px', fontSize: '1.1rem' }}>{analyst.name}</h5>
+                      <h5 style={{ margin: '0 0 5px', fontSize: '1.1rem' }}>
+                        {analyst.name} {!analyst.isRegistered && <span style={{ fontSize: '0.6rem', background: '#fff7ed', color: '#9a3412', padding: '2px 6px', borderRadius: '4px' }}>PENDENTE</span>}
+                      </h5>
                       <div style={{ display: 'flex', gap: '10px' }}>
                         <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>{activeCount} Ativos</span>
                         <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>{inactiveCount} Inativos</span>

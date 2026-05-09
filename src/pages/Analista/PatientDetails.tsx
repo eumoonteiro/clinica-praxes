@@ -331,13 +331,11 @@ const PatientDetails = () => {
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h4 className="outfit" style={{ margin: 0 }}>Documentos</h4>
-                {!isCoordenacao && (
-                  <label className="btn" style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--accent-glow)', color: 'var(--secondary)', cursor: 'pointer', display: 'flex', gap: '8px' }}>
-                    {uploading ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16}/>}
-                    {uploading ? 'Enviando...' : 'Subir PDF'}
-                    <input type="file" accept="application/pdf" style={{ display: 'none' }} disabled={uploading} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
-                  </label>
-                )}
+                <label className="btn" style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--accent-glow)', color: 'var(--secondary)', cursor: 'pointer', display: 'flex', gap: '8px' }}>
+                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16}/>}
+                  {uploading ? 'Enviando...' : 'Subir PDF'}
+                  <input type="file" accept="application/pdf" style={{ display: 'none' }} disabled={uploading} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
+                </label>
               </div>
               <div style={{ display: 'grid', gap: '10px' }}>
                 {patient.files?.map((file: any, i: number) => (
