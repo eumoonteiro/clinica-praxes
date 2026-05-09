@@ -10,7 +10,9 @@ import {
 import { 
   TrendingUp,
   UserPlus,
-  ArrowLeft
+  ArrowLeft,
+  FileDown,
+  UploadCloud
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -82,6 +84,47 @@ const NewUser = () => {
       setNewCpf(''); setNewName(''); setNewSupervisor(''); setNewAtendimentoDesde('');
       alert('Usuário autorizado!');
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
+  };
+
+  const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const lines = text.split('\n').filter(l => l.trim() !== '');
+        // Skip header if it exists
+        const dataLines = lines[0].toLowerCase().includes('nome') ? lines.slice(1) : lines;
+        
+        let count = 0;
+        for (const line of dataLines) {
+          const [name, analistaCpf] = line.split(',').map(s => s.trim());
+          if (name) {
+            await addDoc(collection(db, 'pacientes'), {
+              name,
+              analistaUid: '',
+              analistaCpf: analistaCpf?.replace(/\D/g, '') || '',
+              status: 'Ativo',
+              reasonStopped: '',
+              assignedAt: new Date().toISOString().split('T')[0],
+              createdAt: new Date(),
+              files: []
+            });
+            count++;
+          }
+        }
+        alert(`${count} pacientes importados com sucesso!`);
+      } catch (err: any) {
+        alert('Erro ao processar CSV: ' + err.message);
+      } finally {
+        setLoading(false);
+        e.target.value = ''; // Reset input
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleAddPatient = async (e: React.FormEvent) => {
@@ -186,6 +229,44 @@ const NewUser = () => {
               </div>
               <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%' }}>Finalizar Atribuição</button>
             </form>
+          </div>
+
+          <div className="card" style={{ borderTop: '5px solid #10b981' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h4 className="outfit" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <UploadCloud size={20}/> Importação em Massa (CSV)
+              </h4>
+              <a href="#" onClick={(e) => {
+                e.preventDefault();
+                const blob = new Blob(["Nome do Paciente,CPF do Analista\nFulano de Tal,12345678901\nCiclano de Tal,98765432100"], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.setAttribute('hidden', '');
+                a.setAttribute('href', url);
+                a.setAttribute('download', 'modelo_importacao_praxis.csv');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }} style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <FileDown size={14}/> Baixar Modelo
+              </a>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+              Suba um arquivo CSV contendo o nome do paciente e o CPF do analista (opcional) para criar vários registros de uma vez.
+            </p>
+            <div style={{ padding: '20px', border: '2px dashed #e2e8f0', borderRadius: '15px', textAlign: 'center' }}>
+              <input 
+                type="file" 
+                accept=".csv" 
+                onChange={handleBulkImport} 
+                style={{ display: 'none' }} 
+                id="bulk-import-input" 
+                disabled={loading}
+              />
+              <label htmlFor="bulk-import-input" style={{ cursor: 'pointer', color: '#10b981', fontWeight: 600 }}>
+                {loading ? 'Processando...' : 'Clique para selecionar o arquivo CSV'}
+              </label>
+            </div>
           </div>
 
           {/* Fila de Espera / Reatribuição */}

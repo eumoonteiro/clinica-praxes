@@ -129,6 +129,44 @@ const CoordenacaoDashboard = () => {
               Ver Relatório Completo <ArrowRight size={18} style={{ marginLeft: '8px' }}/>
             </button>
           </div>
+
+          {/* NEW: Clinical Audit FEATURED BLOCK */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderTop: '5px solid #ef4444', gridColumn: 'span 2' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+                <div style={{ background: '#fee2e2', color: '#ef4444', padding: '12px', borderRadius: '12px' }}><Award size={28}/></div>
+                <h3 className="outfit" style={{ margin: 0 }}>Auditoria Clínica (Prontuários)</h3>
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '20px' }}>
+                Acesse o que os analistas estão preenchendo. Visualize prontuários, evoluções e documentos de todos os pacientes da clínica.
+              </p>
+              
+              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #f1f5f9', borderRadius: '12px', padding: '10px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: 'white' }}>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
+                      <th style={{ padding: '8px' }}>Paciente</th>
+                      <th style={{ padding: '8px' }}>Analista</th>
+                      <th style={{ padding: '8px', textAlign: 'right' }}>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {patients.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px' }}>{p.name}</td>
+                        <td style={{ padding: '8px' }}>{p.analistaName || 'Ver na Ficha'}</td>
+                        <td style={{ padding: '8px', textAlign: 'right' }}>
+                          <button onClick={() => navigate(`/paciente/${p.id}`)} className="btn" style={{ padding: '4px 8px', fontSize: '0.7rem', background: 'var(--secondary)', color: 'white' }}>
+                            Ver Prontuário
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Nucleos de Supervisão Section */}
