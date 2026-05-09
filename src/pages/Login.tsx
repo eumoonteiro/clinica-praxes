@@ -55,8 +55,8 @@ const Login = () => {
     setError('');
     try {
       await sendPasswordResetEmail(auth, email.trim());
-      setSuccess('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
-      setTimeout(() => setResetMode(false), 5000);
+      setSuccess('E-mail de recuperação enviado! Verifique sua caixa de entrada e também sua pasta de SPAM.');
+      setTimeout(() => setResetMode(false), 8000);
     } catch (err: any) {
       setError('E-mail não encontrado ou erro no sistema.');
     } finally {

@@ -13,6 +13,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useAuth } from '../../context/AuthContext';
 import { 
   ArrowLeft, 
   FileText, 
@@ -21,12 +22,14 @@ import {
   DollarSign,
   TrendingUp,
   FileUp,
-  Loader2
+  Loader2,
+  Lock
 } from 'lucide-react';
 
 const PatientDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { userData } = useAuth();
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -178,15 +181,24 @@ const PatientDetails = () => {
   if (loading) return <div className="container" style={{ padding: '40px', textAlign: 'center' }}>Carregando dados do paciente...</div>;
   if (!patient) return <div className="container" style={{ padding: '40px', textAlign: 'center' }}>Paciente não encontrado.</div>;
 
+  const isCoordenacao = userData?.role === 'coordenacao';
+
   return (
     <div style={{ background: '#f0f2f5', minHeight: '100vh', padding: '40px 0' }}>
       <div className="container">
         {/* Header Navigation */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px' }}>
-          <button className="btn" style={{ padding: '10px', background: 'white' }} onClick={() => navigate(-1)}>
-            <ArrowLeft size={20}/>
-          </button>
-          <h2 className="outfit">Ficha do Paciente</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '30px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <button className="btn" style={{ padding: '10px', background: 'white' }} onClick={() => navigate(-1)}>
+              <ArrowLeft size={20}/>
+            </button>
+            <h2 className="outfit">Ficha do Paciente</h2>
+          </div>
+          {isCoordenacao && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fee2e2', color: '#ef4444', padding: '8px 16px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600 }}>
+              <Lock size={16}/> Acesso de Consulta (Coordenação)
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px' }} className="mobile-grid">
@@ -195,9 +207,11 @@ const PatientDetails = () => {
             <div className="card" style={{ marginBottom: '30px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h4 className="outfit" style={{ margin: 0 }}>Dados Pessoais</h4>
-                <button className="btn" style={{ padding: '8px 15px', fontSize: '0.8rem', background: isEditing ? '#fee2e2' : 'var(--accent-glow)', color: isEditing ? '#ef4444' : 'var(--secondary)' }} onClick={() => setIsEditing(!isEditing)}>
-                  {isEditing ? 'Cancelar' : 'Editar'}
-                </button>
+                {!isCoordenacao && (
+                  <button className="btn" style={{ padding: '8px 15px', fontSize: '0.8rem', background: isEditing ? '#fee2e2' : 'var(--accent-glow)', color: isEditing ? '#ef4444' : 'var(--secondary)' }} onClick={() => setIsEditing(!isEditing)}>
+                    {isEditing ? 'Cancelar' : 'Editar'}
+                  </button>
+                )}
               </div>
 
               <div style={{ display: 'grid', gap: '15px' }}>
@@ -317,11 +331,13 @@ const PatientDetails = () => {
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h4 className="outfit" style={{ margin: 0 }}>Documentos</h4>
-                <label className="btn" style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--accent-glow)', color: 'var(--secondary)', cursor: 'pointer', display: 'flex', gap: '8px' }}>
-                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16}/>}
-                  {uploading ? 'Enviando...' : 'Subir PDF'}
-                  <input type="file" accept="application/pdf" style={{ display: 'none' }} disabled={uploading} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
-                </label>
+                {!isCoordenacao && (
+                  <label className="btn" style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--accent-glow)', color: 'var(--secondary)', cursor: 'pointer', display: 'flex', gap: '8px' }}>
+                    {uploading ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16}/>}
+                    {uploading ? 'Enviando...' : 'Subir PDF'}
+                    <input type="file" accept="application/pdf" style={{ display: 'none' }} disabled={uploading} onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
+                  </label>
+                )}
               </div>
               <div style={{ display: 'grid', gap: '10px' }}>
                 {patient.files?.map((file: any, i: number) => (
@@ -344,9 +360,11 @@ const PatientDetails = () => {
               <div className="card" style={{ flex: 1, padding: '20px' }}>
                 <h5 className="outfit" style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <TrendingUp size={20} color="var(--secondary)"/> Evolução Clínica
-                  <button className="btn" style={{ marginLeft: 'auto', padding: '6px', background: 'var(--primary)', color: 'white', borderRadius: '8px' }} onClick={() => setShowEvolucaoModal(true)}>
-                    <Plus size={16}/>
-                  </button>
+                  {!isCoordenacao && (
+                    <button className="btn" style={{ marginLeft: 'auto', padding: '6px', background: 'var(--primary)', color: 'white', borderRadius: '8px' }} onClick={() => setShowEvolucaoModal(true)}>
+                      <Plus size={16}/>
+                    </button>
+                  )}
                 </h5>
                 
                 <div style={{ display: 'grid', gap: '15px', maxHeight: '500px', overflowY: 'auto' }}>
@@ -368,9 +386,11 @@ const PatientDetails = () => {
               <div className="card" style={{ flex: 1, padding: '20px' }}>
                 <h5 className="outfit" style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <DollarSign size={20} color="#16a34a"/> Financeiro
-                  <button className="btn" style={{ marginLeft: 'auto', padding: '6px', background: '#16a34a', color: 'white', borderRadius: '8px' }} onClick={() => setShowPagamentoModal(true)}>
-                    <Plus size={16}/>
-                  </button>
+                  {!isCoordenacao && (
+                    <button className="btn" style={{ marginLeft: 'auto', padding: '6px', background: '#16a34a', color: 'white', borderRadius: '8px' }} onClick={() => setShowPagamentoModal(true)}>
+                      <Plus size={16}/>
+                    </button>
+                  )}
                 </h5>
 
                 <div style={{ display: 'grid', gap: '10px' }}>

@@ -131,40 +131,42 @@ const CoordenacaoDashboard = () => {
           </div>
 
           {/* NEW: Clinical Audit FEATURED BLOCK */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderTop: '5px solid #ef4444', gridColumn: 'span 2' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-                <div style={{ background: '#fee2e2', color: '#ef4444', padding: '12px', borderRadius: '12px' }}><Award size={28}/></div>
-                <h3 className="outfit" style={{ margin: 0 }}>Auditoria Clínica (Prontuários)</h3>
-              </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '20px' }}>
-                Acesse o que os analistas estão preenchendo. Visualize prontuários, evoluções e documentos de todos os pacientes da clínica.
-              </p>
-              
-              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #f1f5f9', borderRadius: '12px', padding: '10px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: 'white' }}>
-                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
-                      <th style={{ padding: '8px' }}>Paciente</th>
-                      <th style={{ padding: '8px' }}>Analista</th>
-                      <th style={{ padding: '8px', textAlign: 'right' }}>Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {patients.map(p => (
-                      <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '8px' }}>{p.name}</td>
-                        <td style={{ padding: '8px' }}>{p.analistaName || 'Ver na Ficha'}</td>
-                        <td style={{ padding: '8px', textAlign: 'right' }}>
-                          <button onClick={() => navigate(`/paciente/${p.id}`)} className="btn" style={{ padding: '4px 8px', fontSize: '0.7rem', background: 'var(--secondary)', color: 'white' }}>
-                            Ver Prontuário
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', borderTop: '5px solid #ef4444', gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ background: '#fee2e2', color: '#ef4444', padding: '12px', borderRadius: '12px' }}><Award size={28}/></div>
+              <h3 className="outfit" style={{ margin: 0 }}>Auditoria Clínica por Analista</h3>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '25px' }}>
+              Consulte a produtividade e os prontuários preenchidos por cada profissional.
+            </p>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+              {analysts.map(analyst => {
+                const analystPatients = patients.filter(p => p.analistaUid === analyst.uid || (p.analistaCpf && p.analistaCpf.replace(/\D/g, '') === analyst.cpf?.replace(/\D/g, '')));
+                const activeCount = analystPatients.filter(p => p.status === 'Ativo').length;
+                const inactiveCount = analystPatients.length - activeCount;
+
+                return (
+                  <div key={analyst.uid} className="glass" style={{ padding: '20px', borderRadius: '18px', border: '1px solid #f1f5f9' }}>
+                    <div style={{ marginBottom: '15px' }}>
+                      <h5 style={{ margin: '0 0 5px', fontSize: '1.1rem' }}>{analyst.name}</h5>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>{activeCount} Ativos</span>
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>{inactiveCount} Inativos</span>
+                      </div>
+                    </div>
+                    
+                    <div style={{ maxHeight: '120px', overflowY: 'auto', marginBottom: '15px' }}>
+                       {analystPatients.length > 0 ? analystPatients.map(p => (
+                         <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed #f1f5f9' }}>
+                            <span style={{ fontSize: '0.85rem' }}>{p.name}</span>
+                            <button onClick={() => navigate(`/paciente/${p.id}`)} className="btn" style={{ padding: '3px 8px', fontSize: '0.65rem', background: '#f1f5f9', color: 'var(--primary)' }}>Ver Ficha</button>
+                         </div>
+                       )) : <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sem pacientes atribuídos.</p>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
