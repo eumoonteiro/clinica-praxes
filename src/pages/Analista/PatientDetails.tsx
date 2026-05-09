@@ -69,22 +69,10 @@ const PatientDetails = () => {
 
     fetchPatient();
 
-    const isAnalista = userData?.role === 'analista';
-
-    let qProntuarios;
-    if (isAnalista) {
-      qProntuarios = query(
-        collection(db, 'prontuarios'), 
-        where('patientId', '==', id),
-        where('analistaUid', '==', auth.currentUser?.uid)
-      );
-    } else {
-      qProntuarios = query(
-        collection(db, 'prontuarios'), 
-        where('patientId', '==', id)
-      );
-    }
-
+    const qProntuarios = query(
+      collection(db, 'prontuarios'), 
+      where('patientId', '==', id)
+    );
     const unsubProntuarios = onSnapshot(qProntuarios, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProntuarios(data.sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds));
@@ -92,20 +80,10 @@ const PatientDetails = () => {
       console.error("Erro ao carregar prontuários:", error);
     });
 
-    let qPayments;
-    if (isAnalista) {
-      qPayments = query(
-        collection(db, 'pagamentos'), 
-        where('patientId', '==', id),
-        where('analistaUid', '==', auth.currentUser?.uid)
-      );
-    } else {
-      qPayments = query(
-        collection(db, 'pagamentos'), 
-        where('patientId', '==', id)
-      );
-    }
-
+    const qPayments = query(
+      collection(db, 'pagamentos'), 
+      where('patientId', '==', id)
+    );
     const unsubPayments = onSnapshot(qPayments, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPayments(data.sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds));
