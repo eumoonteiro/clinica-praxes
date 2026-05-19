@@ -10,6 +10,7 @@ import {
   where, 
   onSnapshot,
   addDoc,
+  deleteDoc,
   serverTimestamp
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -23,7 +24,9 @@ import {
   TrendingUp,
   FileUp,
   Loader2,
-  Lock
+  Lock,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 
 const PatientDetails = () => {
@@ -42,6 +45,7 @@ const PatientDetails = () => {
 
   // Modal states
   const [showEvolucaoModal, setShowEvolucaoModal] = useState(false);
+  const [editingProntuarioId, setEditingProntuarioId] = useState<string | null>(null);
   const [showPagamentoModal, setShowPagamentoModal] = useState(false);
   
   // Form states
@@ -138,22 +142,65 @@ const PatientDetails = () => {
     e.preventDefault();
     if (!id || !evolucaoContent) return;
     try {
-      await addDoc(collection(db, 'prontuarios'), {
-        patientId: id,
-        patientName: patient.name,
-        analistaUid: auth.currentUser?.uid,
-        analistaName: auth.currentUser?.displayName || 'Analista',
-        content: evolucaoContent,
-        type: evolucaoType,
-        date: evolucaoDate,
-        createdAt: serverTimestamp()
-      });
-      setEvolucaoContent('');
-      setShowEvolucaoModal(false);
-      alert('Evolução registrada!');
+      if (editingProntuarioId) {
+        await updateDoc(doc(db, 'prontuarios', editingProntuarioId), {
+          content: evolucaoContent,
+          type: evolucaoType,
+          date: evolucaoDate,
+        });
+        alert('Evolução atualizada!');
+      } else {
+        await addDoc(collection(db, 'prontuarios'), {
+          patientId: id,
+          patientName: patient.name,
+          analistaUid: auth.currentUser?.uid,
+          analistaName: auth.currentUser?.displayName || 'Analista',
+          content: evolucaoContent,
+          type: evolucaoType,
+          date: evolucaoDate,
+          createdAt: serverTimestamp()
+        });
+        alert('Evolução registrada!');
+      }
+      closeEvolucaoModal();
     } catch (err: any) {
       alert(err.message);
     }
+  };
+
+  const handleDeleteEvolucao = async (prontuarioId: string) => {
+    if (window.confirm('Tem certeza que deseja excluir esta evolução? Esta ação não pode ser desfeita.')) {
+      try {
+        await deleteDoc(doc(db, 'prontuarios', prontuarioId));
+        alert('Evolução excluída com sucesso.');
+      } catch (err: any) {
+        alert(err.message);
+      }
+    }
+  };
+
+  const openEditModal = (pr: any) => {
+    setEditingProntuarioId(pr.id);
+    setEvolucaoContent(pr.content);
+    setEvolucaoType(pr.type);
+    setEvolucaoDate(pr.date);
+    setShowEvolucaoModal(true);
+  };
+
+  const openNewModal = () => {
+    setEditingProntuarioId(null);
+    setEvolucaoContent('');
+    setEvolucaoType('Evolução Semanal');
+    setEvolucaoDate(new Date().toISOString().split('T')[0]);
+    setShowEvolucaoModal(true);
+  };
+
+  const closeEvolucaoModal = () => {
+    setShowEvolucaoModal(false);
+    setEditingProntuarioId(null);
+    setEvolucaoContent('');
+    setEvolucaoType('Evolução Semanal');
+    setEvolucaoDate(new Date().toISOString().split('T')[0]);
   };
 
   const handleAddPagamento = async (e: React.FormEvent) => {
@@ -363,7 +410,7 @@ const PatientDetails = () => {
                 <h5 className="outfit" style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <TrendingUp size={20} color="var(--secondary)"/> Evolução Clínica
                   {!isCoordenacao && (
-                    <button className="btn" style={{ marginLeft: 'auto', padding: '6px', background: 'var(--primary)', color: 'white', borderRadius: '8px' }} onClick={() => setShowEvolucaoModal(true)}>
+                    <button className="btn" style={{ marginLeft: 'auto', padding: '6px', background: 'var(--primary)', color: 'white', borderRadius: '8px' }} onClick={openNewModal}>
                       <Plus size={16}/>
                     </button>
                   )}
@@ -374,7 +421,19 @@ const PatientDetails = () => {
                     <div key={pr.id} style={{ background: '#f8fafc', padding: '15px', borderRadius: '15px', borderLeft: '4px solid var(--secondary)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{pr.type}</span>
-                        <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>{new Date(pr.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>{new Date(pr.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                          {!isCoordenacao && (
+                            <div style={{ display: 'flex', gap: '5px' }}>
+                              <button onClick={() => openEditModal(pr)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', padding: '2px', display: 'flex', alignItems: 'center' }} title="Editar">
+                                <Pencil size={14} />
+                              </button>
+                              <button onClick={() => handleDeleteEvolucao(pr.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', display: 'flex', alignItems: 'center' }} title="Excluir">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <p style={{ margin: 0, fontSize: '0.9rem', whiteSpace: 'pre-wrap', opacity: 0.8 }}>{pr.content}</p>
                     </div>
@@ -424,7 +483,7 @@ const PatientDetails = () => {
       {showEvolucaoModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div className="card" style={{ width: '100%', maxWidth: '500px' }}>
-            <h4 className="outfit" style={{ marginBottom: '20px' }}>Registrar Evolução</h4>
+            <h4 className="outfit" style={{ marginBottom: '20px' }}>{editingProntuarioId ? 'Editar Evolução' : 'Registrar Evolução'}</h4>
             <form onSubmit={handleAddEvolucao}>
               <div className="form-group">
                 <label>Data</label>
@@ -444,8 +503,8 @@ const PatientDetails = () => {
                 <textarea className="form-control" style={{ minHeight: '150px' }} value={evolucaoContent} onChange={e => setEvolucaoContent(e.target.value)} required />
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Salvar</button>
-                <button type="button" className="btn" style={{ flex: 1, background: '#f1f5f9' }} onClick={() => setShowEvolucaoModal(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>{editingProntuarioId ? 'Atualizar' : 'Salvar'}</button>
+                <button type="button" className="btn" style={{ flex: 1, background: '#f1f5f9' }} onClick={closeEvolucaoModal}>Cancelar</button>
               </div>
             </form>
           </div>
